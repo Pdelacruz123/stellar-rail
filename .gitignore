@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.vercel/
+*.log
+.DS_Store
+
+# Variables de entorno. Solo .env.example va al repositorio.
+.env
+.env.*
+!.env.example
+
+# Claves secretas de Stellar. NUNCA deben llegar al repositorio.
+# Archivo de trabajo con las cuentas usadas en Stellar Lab:
+datos users.txt
+# Volcados de credenciales. Acotado a .txt y a extensiones de clave
+# a proposito: un patron como *secret* ignoraria archivos fuente.
+claves*.txt
+credenciales*.txt
+secretos*.txt
+*.key
+*.pem
+
+
+# Documentos internos del equipo. No son para el jurado ni para nadie
+# externo: se comparten por un canal privado, nunca por el repositorio.
+EMPIEZA-AQUI.txt
+DIAGRAMAS.txt
+GUIA_DESARROLLO.md
+CLAUDE.md
+# Configuracion local de Claude Code.
+.claude/
