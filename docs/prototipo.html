@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vales programables — simulación del producto final</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --paper:#EEF1EC; --surface:#FFFFFF; --ink:#15212C; --muted:#56626D; --line:#D3D9D1;
+  --green:#15724A; --green-soft:#E1F0E6; --red:#B0271F; --red-soft:#F7E3E1;
+  --gold:#A8700A; --gold-soft:#FAEFD6;
+  --vale:#1D3B2F; --vale-ink:#F2F6EF; --vale-muted:#B8CBBE;
+  --font:"Bricolage Grotesque",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F161C; --surface:#172129; --ink:#E6EBEE; --muted:#95A2AC; --line:#2A3641;
+    --green:#4DC086; --green-soft:#16302A; --red:#EF8A80; --red-soft:#3A1D1B;
+    --gold:#E6B24D; --gold-soft:#322811; --vale:#1F4636; --vale-ink:#F2F6EF; --vale-muted:#A9C2B3;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F161C; --surface:#172129; --ink:#E6EBEE; --muted:#95A2AC; --line:#2A3641;
+  --green:#4DC086; --green-soft:#16302A; --red:#EF8A80; --red-soft:#3A1D1B;
+  --gold:#E6B24D; --gold-soft:#322811; --vale:#1F4636; --vale-ink:#F2F6EF; --vale-muted:#A9C2B3;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.5;font-variant-numeric:tabular-nums}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+
+/* Header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
+.brand h1{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1;margin:0;font-weight:800;letter-spacing:-.02em}
+.brand p{margin:8px 0 0;color:var(--muted);max-width:60ch}
+.reset{background:none;border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer;color:var(--muted)}
+.reset:hover{color:var(--ink);border-color:var(--ink)}
+
+/* Guide */
+.guide{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px}
+.guide h2{font-size:1rem;margin:0 0 10px;font-weight:700}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));counter-reset:s}
+.steps li{counter-increment:s;position:relative;padding:8px 10px 8px 40px;border-radius:10px;font-size:.9rem;color:var(--muted);border:1px solid transparent}
+.steps li::before{content:counter(s);position:absolute;left:10px;top:8px;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700}
+.steps li.now{color:var(--ink);border-color:var(--gold);background:var(--gold-soft)}
+.steps li.now::before{border-color:var(--gold);color:var(--gold)}
+.steps li.done{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.steps li.done::before{content:"✓";background:var(--green);border-color:var(--green);color:#fff}
+.steps .who{display:block;font-size:.78rem;text-decoration:none}
+
+/* Roles */
+.roles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.role{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 16px;cursor:pointer;font-weight:600;font-size:.95rem}
+.role[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.role small{font-weight:400;opacity:.75;margin-left:4px}
+
+/* Main grid */
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+.panel > h2{margin:0 0 4px;font-size:1.35rem;font-weight:750;letter-spacing:-.01em}
+.panel > .sub{margin:0 0 18px;color:var(--muted);font-size:.93rem}
+.block{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+.block h3{margin:0 0 10px;font-size:1rem;font-weight:700}
+
+/* Rows */
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border-bottom:none}
+.row .name{font-weight:600}
+.row .meta{font-size:.84rem;color:var(--muted)}
+.chip{display:inline-block;font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.chip.pend{background:var(--gold-soft);color:var(--gold)}
+.chip.ok{background:var(--green-soft);color:var(--green)}
+.chip.no{background:var(--red-soft);color:var(--red)}
+.chip.frozen{background:var(--line);color:var(--muted)}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Buttons */
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:650;cursor:pointer;background:var(--ink);color:var(--paper)}
+.btn:hover{filter:brightness(1.12)}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.good{background:var(--green);color:#fff}
+.btn.bad{background:transparent;border:1px solid var(--red);color:var(--red)}
+.btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+.btn.small{padding:6px 12px;font-size:.88rem}
+
+/* Forms */
+.field{display:grid;gap:4px;margin-bottom:10px}
+.field label{font-size:.85rem;color:var(--muted)}
+.field input{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:9px 12px;width:100%}
+.inline{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:480px){.inline{grid-template-columns:1fr}}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{background:var(--paper);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:1.35rem;font-weight:750}
+.stat span{font-size:.8rem;color:var(--muted)}
+.bar{height:8px;background:var(--paper);border-radius:99px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--green);border-radius:99px;transition:width .4s ease}
+
+/* The vale */
+.vale{position:relative;background:var(--vale);color:var(--vale-ink);border-radius:16px;padding:22px 24px 20px 34px;overflow:hidden;
+  -webkit-mask:radial-gradient(circle at 0 50%,transparent 9px,#000 9.5px) left/100% 22px repeat-y;
+          mask:radial-gradient(circle at 0 50%,transparent 9px,#000 9.5px) left/100% 22px repeat-y}
+.vale::after{content:"";position:absolute;left:18px;top:14px;bottom:14px;border-left:2px dashed rgba(255,255,255,.22)}
+.vale .prog{font-size:.9rem;color:var(--vale-muted)}
+.vale .amount{font-size:clamp(2.6rem,7vw,3.6rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:4px 0 2px}
+.vale .amount small{font-size:.4em;font-weight:600;margin-right:4px;vertical-align:.55em}
+.vale .units{font-size:.85rem;color:var(--vale-muted)}
+.vale .foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;font-size:.85rem;color:var(--vale-muted)}
+.stamp{position:absolute;right:18px;top:18px;width:92px;height:92px;border-radius:50%;border:2.5px solid currentColor;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;font-weight:800;line-height:1.15;transform:rotate(-12deg);padding:8px;opacity:.9}
+.stamp.ok{color:#8FE0B4}.stamp.pend{color:#F2C46B}.stamp.no{color:#F4A39B}.stamp.frozen{color:#C9D3CC}
+@media (prefers-reduced-motion:no-preference){.stamp.fresh{animation:stamp .45s cubic-bezier(.2,1.6,.4,1)}}
+@keyframes stamp{from{transform:rotate(-12deg) scale(1.8);opacity:0}to{transform:rotate(-12deg) scale(1);opacity:.9}}
+
+/* Notices & results */
+.notice{border-radius:12px;padding:12px 14px;font-size:.93rem;margin:10px 0}
+.notice.pend{background:var(--gold-soft)}
+.notice.no{background:var(--red-soft)}
+.notice.ok{background:var(--green-soft)}
+.result{border-radius:12px;padding:14px 16px;margin-top:12px}
+.result.ok{background:var(--green-soft)}
+.result.no{background:var(--red-soft)}
+.result strong{display:block;font-size:1.05rem}
+.result code{font-family:var(--mono);font-size:.85em}
+
+/* Merchant picker */
+.pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+@media (max-width:480px){.pick{grid-template-columns:1fr}}
+.pick button{text-align:left;border:1.5px solid var(--line);background:var(--paper);border-radius:12px;padding:12px;cursor:pointer}
+.pick button[aria-pressed="true"]{border-color:var(--ink);background:var(--surface)}
+.pick b{display:block}
+.pick span{font-size:.82rem;color:var(--muted)}
+
+/* QR */
+.qrbox{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.qr{width:168px;height:168px;background:#fff;border-radius:12px;padding:10px;flex:none}
+.qr svg{width:100%;height:100%;display:block}
+.qrbox p{margin:0;max-width:30ch}
+
+/* Ledger */
+.ledger{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
+@media (max-width:860px){.ledger{position:static}}
+.ledger > h2{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ledger > h2 small{font-size:.8rem;font-weight:500;color:var(--muted)}
+.tx-list{list-style:none;margin:0;padding:0;max-height:640px;overflow:auto}
+.tx{border-left:3px solid var(--green);padding:8px 0 10px 12px;margin-bottom:8px}
+.tx.fail{border-left-color:var(--red)}
+.tx.seed{border-left-color:var(--line)}
+.tx .op{font-weight:700;font-size:.95rem}
+.tx .desc{font-size:.88rem;color:var(--muted)}
+.tx .hash{font-family:var(--mono);font-size:.74rem;color:var(--muted);word-break:break-all;margin-top:2px}
+.tx .code{font-family:var(--mono);font-size:.78rem;color:var(--red)}
+@media (prefers-reduced-motion:no-preference){.tx.new{animation:slide .35s ease}}
+@keyframes slide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+.empty{color:var(--muted);font-size:.93rem;padding:6px 0}
+
+/* Evidence */
+.evidence{margin-top:26px}
+.evidence h2{font-size:1.25rem;margin:0 0 6px}
+.evidence > p{color:var(--muted);margin:0 0 14px;max-width:70ch}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:.92rem}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font-weight:650;color:var(--muted);font-size:.84rem}
+tr:last-child td{border-bottom:none}
+td a{color:var(--green);font-family:var(--mono);font-size:.84rem}
+.foot-note{margin-top:22px;color:var(--muted);font-size:.85rem}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="brand">
+    <h1>Vales programables</h1>
+    <p>Simulación del producto final para Stellar Odyssey Perú. Cambia de rol arriba y sigue el recorrido. En esta pantalla nada se envía a la red; la evidencia real en testnet está al final.</p>
+  </div>
+  <button class="reset" id="reset" type="button">Reiniciar simulación</button>
+</header>
+
+<section class="guide" aria-labelledby="g-title">
+  <h2 id="g-title">Recorrido del video demo</h2>
+  <ol class="steps" id="steps"></ol>
+</section>
+
+<nav class="roles" id="roles" aria-label="Elegir rol"></nav>
+
+<div class="grid">
+  <main class="panel" id="view" aria-live="polite"></main>
+  <aside class="panel ledger" aria-labelledby="l-title">
+    <h2 id="l-title">Red Stellar <small>operaciones registradas</small></h2>
+    <p class="sub">Cada acción de la app se convierte en una operación en la red. Hashes simulados.</p>
+    <ol class="tx-list" id="ledger" aria-live="polite"></ol>
+  </aside>
+</div>
+
+<section class="evidence" aria-labelledby="e-title">
+  <h2 id="e-title">Evidencia real en Stellar Testnet</h2>
+  <p>El mismo ciclo ya se ejecutó en la red de pruebas. Cada enlace abre la transacción en el explorador público.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Qué demuestra</th><th>Operación</th><th>Transacción</th></tr></thead>
+      <tbody id="evidence"></tbody>
+    </table>
+  </div>
+  <p class="foot-note">Prototipo de interfaz. Activo <code>ALIM</code>, 1 ALIM equivale a S/ 1. Personas y comercios ficticios.</p>
+</section>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var ROLES = [
+    {id:"empresa", label:"Empresa", hint:"emisor"},
+    {id:"maria", label:"María", hint:"trabajadora"},
+    {id:"bodegaA", label:"Bodega Don Julio", hint:""},
+    {id:"bodegaB", label:"Minimarket La Esquina", hint:""}
+  ];
+
+  var EVIDENCE = [
+    ["Emisor con reglas de control","Set Options","cc8720b10dfe15bb7e900bc2dcf7f62871dc4060fc2baa21ac995b5ffa59fed4"],
+    ["Trabajador pide poder tener el vale","Change Trust","b4c49a2d5ea17370524a2ddb32dbb533b1b7e264c03cbe19aa8581327cccfe31"],
+    ["Emisor autoriza a trabajador y bodega","Set Trust Line Flags","7ffe4b8c9117b10ba94cc898f1daeb8d521728214886590c4ba11578bba936ec"],
+    ["Nace el vale: 10 ALIM","Payment","0edf301eda1a3da072ec5300f00d01d5968786a95d9129c66a2244ea51ce8cb3"],
+    ["Pago aceptado en bodega autorizada","Payment","03b7a7a73ceb9a80931ecde1bd97679de19faae43430597dd1ec86dccaa49ca9"],
+    ["Pago rechazado: op_not_authorized","Payment (falla)","a2a93ef51e1c1fcba4832655b8f53af1abb31c0e213eb001de01d15b68ee8a4b"],
+    ["Emisor congela la cuenta","Set Trust Line Flags","6026944617492a57465ac9ecd9d667d9d8c4b579a56d895424a5e4539b7f3181"],
+    ["Pago bloqueado: op_src_not_authorized","Payment (falla)","8029708fdd60b8ecc1b50c622ff68d69ba2b497c04b8e48c1b6c09ae8aa3fcf3"],
+    ["Vencimiento: 7 ALIM anulados","Clawback","1d75e34f0f963d5fc436b693f2634a09e8b85b0730c57319546cbfe288289044"]
+  ];
+
+  var STEPS = [
+    {text:"Verifica a María y a la Bodega Don Julio", who:"Empresa", done:function(s){return s.acc.maria.status==="verificado" && s.acc.bodegaA.status==="verificado";}},
+    {text:"Crea el programa y entrega el vale a María", who:"Empresa", done:function(s){return s.delivered;}},
+    {text:"María paga en la Bodega Don Julio", who:"María", done:function(s){return s.acc.bodegaA.received>0;}},
+    {text:"María intenta pagar en el Minimarket La Esquina", who:"María", done:function(s){return s.triedB;}},
+    {text:"Vence el programa", who:"Empresa", done:function(s){return s.expired;}}
+  ];
+
+  var state, role = "empresa", lastStamp = "";
+
+  function fresh(){
+    var d = new Date(); d.setDate(d.getDate()+30);
+    return {
+      acc:{
+        maria:{name:"María Quispe", kind:"Trabajadora", status:"pendiente", trust:"none", bal:0, moves:[]},
+        bodegaA:{name:"Bodega Don Julio", kind:"Bodega, San Juan de Lurigancho", status:"pendiente", trust:"none", received:0, moves:[]},
+        bodegaB:{name:"Minimarket La Esquina", kind:"Minimarket, Comas", status:"pendiente", trust:"none", received:0, moves:[]}
+      },
+      program:null, defaultDate:d.toISOString().slice(0,10),
+      delivered:false, expired:false, triedB:false, spent:0, deliveredAmt:0, voided:0,
+      ledger:[
+        {op:"Change Trust", desc:"Minimarket La Esquina solicita poder recibir ALIM", ok:true, seed:true, hash:hex()},
+        {op:"Change Trust", desc:"Bodega Don Julio solicita poder recibir ALIM", ok:true, seed:true, hash:hex()},
+        {op:"Change Trust", desc:"María solicita poder recibir ALIM", ok:true, seed:true, hash:hex()},
+        {op:"Set Options", desc:"Textiles Andinos activa autorización requerida, revocable y anulable", ok:true, seed:true, hash:hex()}
+      ],
+      pay:{to:null, amount:"", result:null}
+    };
+  }
+
+  function hex(){
+    var a = new Uint8Array(32);
+    (window.crypto||window.msCrypto).getRandomValues(a);
+    return Array.prototype.map.call(a,function(b){return ("0"+b.toString(16)).slice(-2);}).join("");
+  }
+  function soles(n){return "S/ "+Number(n).toFixed(2);}
+  function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+  function short(h){return h.slice(0,10)+"…"+h.slice(-6);}
+  function fmtDate(iso){var p=iso.split("-");return p[2]+"/"+p[1]+"/"+p[0];}
+
+  function record(op, desc, ok, code){
+    var tx = {op:op, desc:desc, ok:ok, code:code||"", hash:hex(), isNew:true};
+    state.ledger.unshift(tx);
+    return tx;
+  }
+
+  function chip(a){
+    if(a.trust==="frozen") return '<span class="chip frozen">Congelado</span>';
+    if(a.status==="verificado") return '<span class="chip ok">Autorizado en la red</span>';
+    if(a.status==="rechazado") return '<span class="chip no">Rechazado</span>';
+    return '<span class="chip pend">Verificación pendiente</span>';
+  }
+
+  /* ---------- Actions ---------- */
+  var act = {
+    verify:function(id, approve){
+      var a = state.acc[id];
+      if(approve){
+        a.status="verificado"; a.trust="authorized";
+        record("Set Trust Line Flags", a.name+" verificado. El emisor autoriza su cuenta para ALIM", true);
+      } else {
+        a.status="rechazado";
+      }
+    },
+    createProgram:function(name, amount, date){
+      state.program = {name:name, amount:amount, date:date};
+    },
+    deliver:function(){
+      var m = state.acc.maria, p = state.program;
+      if(m.trust!=="authorized"){
+        record("Payment", "Entrega a María", false, "op_not_authorized");
+        return;
+      }
+      m.bal += p.amount; state.delivered = true; state.deliveredAmt += p.amount;
+      m.moves.unshift({t:"Recibiste", amt:p.amount, who:"Textiles Andinos"});
+      record("Payment", "Textiles Andinos entrega "+p.amount+" ALIM a María. Nace el vale", true);
+    },
+    pay:function(){
+      var m = state.acc.maria, to = state.acc[state.pay.to], amt = Number(state.pay.amount);
+      if(state.pay.to==="bodegaB") state.triedB = true;
+      if(!(amt>0)){ state.pay.result={ok:false, title:"Ingresa un monto mayor a cero.", code:""}; return; }
+      if(m.trust==="frozen"){
+        record("Payment", "María intenta pagar "+amt+" ALIM a "+to.name, false, "op_src_not_authorized");
+        state.pay.result={ok:false, title:"Tu vale está congelado", body:"El programa venció. La red no permite mover este saldo.", code:"op_src_not_authorized"}; return;
+      }
+      if(to.trust!=="authorized"){
+        record("Payment", "María intenta pagar "+amt+" ALIM a "+to.name, false, "op_not_authorized");
+        state.pay.result={ok:false, title:"Este comercio no acepta tu vale", body:to.name+" no está afiliado a tu programa. La red rechazó el pago; tu saldo no cambió.", code:"op_not_authorized"}; return;
+      }
+      if(amt>m.bal){
+        state.pay.result={ok:false, title:"Saldo insuficiente", body:"Tienes "+soles(m.bal)+" disponibles.", code:"op_underfunded"}; return;
+      }
+      m.bal -= amt; to.received += amt; state.spent += amt;
+      m.moves.unshift({t:"Pagaste", amt:-amt, who:to.name});
+      to.moves.unshift({t:"Cobraste", amt:amt, who:"María Quispe"});
+      var tx = record("Payment", "María paga "+amt+" ALIM a "+to.name, true);
+      state.pay.result={ok:true, title:"Pago confirmado", body:soles(amt)+" a "+to.name+". Confirmado en segundos.", hash:tx.hash};
+      state.pay.amount="";
+    },
+    expire:function(){
+      var m = state.acc.maria, left = m.bal;
+      m.trust="frozen";
+      record("Set Trust Line Flags", "Programa vencido. El emisor congela la cuenta de María", true);
+      if(left>0){
+        record("Clawback", "El emisor anula "+left+" ALIM no gastados", true);
+        m.moves.unshift({t:"Vencido y anulado", amt:-left, who:"Textiles Andinos"});
+      }
+      state.voided = left; m.bal = 0; state.expired = true;
+    }
+  };
+
+  /* ---------- Views ---------- */
+  function viewEmpresa(){
+    var s = state, h = '<h2>Textiles Andinos S.A.C.</h2><p class="sub">Panel del emisor del beneficio de alimentación.</p>';
+
+    h += '<div class="block" style="border-top:none;margin-top:0;padding-top:0"><h3>Verificaciones</h3>';
+    ["maria","bodegaA","bodegaB"].forEach(function(id){
+      var a = s.acc[id];
+      h += '<div class="row"><div><div class="name">'+esc(a.name)+'</div><div class="meta">'+esc(a.kind)+'</div></div><div class="actions">';
+      if(a.status==="pendiente"){
+        h += '<button class="btn good small" data-act="approve" data-id="'+id+'">Aprobar y autorizar</button>'+
+             '<button class="btn bad small" data-act="reject" data-id="'+id+'">Rechazar</button>';
+      } else { h += chip(a); }
+      h += '</div></div>';
+    });
+    h += '</div>';
+
+    h += '<div class="block"><h3>Programa</h3>';
+    if(!s.program){
+      h += '<div class="field"><label for="pname">Nombre</label><input id="pname" value="Alimentación septiembre"></div>'+
+           '<div class="inline"><div class="field"><label for="pamt">Monto por trabajador (S/)</label><input id="pamt" type="number" min="1" value="50"></div>'+
+           '<div class="field"><label for="pdate">Vence el</label><input id="pdate" type="date" value="'+s.defaultDate+'"></div></div>'+
+           '<button class="btn" data-act="create">Crear programa</button>';
+    } else {
+      var p = s.program, m = s.acc.maria;
+      h += '<div class="row"><div><div class="name">'+esc(p.name)+'</div><div class="meta">'+soles(p.amount)+' por trabajador. Vence el '+fmtDate(p.date)+'</div></div>'+
+           (s.expired?'<span class="chip frozen">Vencido</span>':'<span class="chip ok">Vigente</span>')+'</div>';
+      var canDeliver = !s.delivered && !s.expired;
+      h += '<div class="actions" style="margin-top:10px">'+
+           '<button class="btn" data-act="deliver" '+(canDeliver?"":"disabled")+'>Entregar vale a María</button>'+
+           '<button class="btn ghost" data-act="expire" '+(s.delivered&&!s.expired?"":"disabled")+'>Vencer programa</button></div>';
+      if(!s.delivered && m.status!=="verificado") h += '<div class="notice pend">María aún no está verificada. Si entregas ahora, la red rechazará el pago.</div>';
+      if(s.expired) h += '<div class="notice ok">Programa vencido. Se anularon '+soles(s.voided)+' que no se gastaron. Tu respaldo por ese monto queda libre.</div>';
+    }
+    h += '</div>';
+
+    var vig = s.acc.maria.bal;
+    h += '<div class="block"><h3>Gasto en vivo</h3><div class="stats">'+
+         '<div class="stat"><b>'+soles(s.deliveredAmt)+'</b><span>Entregado</span></div>'+
+         '<div class="stat"><b>'+soles(s.spent)+'</b><span>Gastado</span></div>'+
+         '<div class="stat"><b>'+soles(vig)+'</b><span>Saldo vigente</span></div></div>';
+    ["bodegaA","bodegaB"].forEach(function(id){
+      var a = s.acc[id], pct = s.deliveredAmt? Math.round(a.received/s.deliveredAmt*100):0;
+      h += '<div style="margin-top:12px"><div class="row" style="border:none;padding:0"><span>'+esc(a.name)+'</span><span>'+soles(a.received)+'</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  function stampFor(m){
+    if(m.trust==="frozen") return ["frozen","Vencido<br>y congelado"];
+    if(m.status==="verificado") return ["ok","Autorizado<br>por la red"];
+    if(m.status==="rechazado") return ["no","No<br>autorizado"];
+    return ["pend","Verificación<br>pendiente"];
+  }
+
+  function viewMaria(){
+    var s = state, m = s.acc.maria, p = s.program, h = '<h2>Hola, María</h2><p class="sub">Tu beneficio de alimentación.</p>';
+    var st = stampFor(m), key = st[0]+m.bal;
+    var freshCls = (key!==lastStamp)?" fresh":""; lastStamp = key;
+    h += '<div class="vale"><div class="prog">'+(p?esc(p.name):"Sin programa activo")+' · Textiles Andinos</div>'+
+         '<div class="amount"><small>S/</small>'+m.bal.toFixed(2)+'</div><div class="units">'+m.bal+' ALIM</div>'+
+         '<div class="foot"><span>'+(p?"Vence el "+fmtDate(p.date):"")+'</span><span>Solo alimentos</span></div>'+
+         '<div class="stamp '+st[0]+freshCls+'">'+st[1]+'</div></div>';
+
+    if(m.status==="pendiente") h += '<div class="notice pend">Tu registro está en revisión. Cuando la empresa te verifique, podrás recibir y usar vales.</div>';
+    if(m.status==="rechazado") h += '<div class="notice no">Tu registro fue rechazado. Consulta con Recursos Humanos.</div>';
+
+    var ok = ["bodegaA","bodegaB"].filter(function(id){return s.acc[id].trust==="authorized";});
+    h += '<div class="block"><h3>Dónde usarlo</h3>'+(ok.length? ok.map(function(id){return '<div class="row"><span>'+esc(s.acc[id].name)+'</span><span class="chip ok">Afiliado</span></div>';}).join("") : '<p class="empty">Todavía no hay comercios afiliados a tu programa.</p>')+'</div>';
+
+    h += '<div class="block"><h3>Pagar con QR</h3><p class="meta" style="margin:0 0 10px;color:var(--muted);font-size:.88rem">Elige el QR que escaneaste en caja.</p><div class="pick">';
+    ["bodegaA","bodegaB"].forEach(function(id){
+      var a = s.acc[id];
+      h += '<button type="button" data-act="pickTo" data-id="'+id+'" aria-pressed="'+(s.pay.to===id)+'"><b>'+esc(a.name)+'</b><span>QR escaneado en caja</span></button>';
+    });
+    h += '</div><div class="inline"><div class="field"><label for="payamt">Monto (S/)</label><input id="payamt" type="number" min="1" step="0.5" value="'+esc(s.pay.amount)+'" placeholder="Ej. 18.50"></div>'+
+         '<div class="field" style="align-self:end"><button class="btn" data-act="pay" '+(s.pay.to?"":"disabled")+'>'+(s.pay.to?"Pagar a "+esc(s.acc[s.pay.to].name):"Elige un comercio")+'</button></div></div>';
+    var r = s.pay.result;
+    if(r){
+      h += '<div class="result '+(r.ok?"ok":"no")+'" role="status"><strong>'+esc(r.title)+'</strong>'+(r.body?'<div>'+esc(r.body)+'</div>':"")+
+           (r.code?'<div class="meta">Código de la red: <code>'+r.code+'</code></div>':"")+
+           (r.hash?'<div class="meta">Transacción <code>'+short(r.hash)+'</code> (simulada)</div>':"")+'</div>';
+    }
+    h += '</div>';
+
+    h += '<div class="block"><h3>Movimientos</h3>'+(m.moves.length? m.moves.map(function(x){return '<div class="row"><div><div class="name">'+x.t+'</div><div class="meta">'+esc(x.who)+'</div></div><span>'+(x.amt>0?"+":"−")+soles(Math.abs(x.amt))+'</span></div>';}).join("") : '<p class="empty">Aún no tienes movimientos.</p>')+'</div>';
+    return h;
+  }
+
+  function qrSvg(seed){
+    var n = 25, cells = "", x = 0;
+    for(var i=0;i<seed.length;i++){ x = (x*31 + seed.charCodeAt(i)) >>> 0; }
+    function rnd(){ x ^= x<<13; x>>>=0; x ^= x>>>17; x ^= x<<5; x>>>=0; return x/4294967296; }
+    function finder(cx,cy){
+      return '<rect x="'+cx+'" y="'+cy+'" width="7" height="7" fill="#111"/><rect x="'+(cx+1)+'" y="'+(cy+1)+'" width="5" height="5" fill="#fff"/><rect x="'+(cx+2)+'" y="'+(cy+2)+'" width="3" height="3" fill="#111"/>';
+    }
+    for(var r=0;r<n;r++) for(var c=0;c<n;c++){
+      var inF = (r<8&&c<8)||(r<8&&c>n-9)||(r>n-9&&c<8);
+      if(!inF && rnd()>0.52) cells += '<rect x="'+c+'" y="'+r+'" width="1" height="1" fill="#111"/>';
+    }
+    return '<svg viewBox="0 0 '+n+' '+n+'" shape-rendering="crispEdges" role="img" aria-label="Código QR de cobro (ilustrativo)"><rect width="'+n+'" height="'+n+'" fill="#fff"/>'+cells+finder(0,0)+finder(n-7,0)+finder(0,n-7)+'</svg>';
+  }
+
+  function viewComercio(id){
+    var a = state.acc[id], h = '<h2>'+esc(a.name)+'</h2><p class="sub">'+esc(a.kind)+'</p>';
+    h += '<div class="row" style="padding-top:0"><span>Estado para vales de Textiles Andinos</span>'+chip(a)+'</div>';
+    if(a.trust!=="authorized"){
+      h += '<div class="notice '+(a.status==="rechazado"?"no":"pend")+'">'+(a.status==="rechazado"?"Tu registro fue rechazado. No puedes cobrar vales de este programa.":"Aún no puedes cobrar vales: la empresa no ha aprobado tu registro. Si un cliente intenta pagarte, la red rechazará el pago.")+'</div>';
+    }
+    h += '<div class="block"><h3>Cobrar</h3><div class="qrbox"><div class="qr">'+qrSvg(id)+'</div><p>Muestra este código en caja. El cliente lo escanea con su app y el pago llega en segundos, sin POS.</p></div></div>';
+    h += '<div class="block"><h3>Lo recibido</h3><div class="stats" style="grid-template-columns:1fr 1fr"><div class="stat"><b>'+soles(a.received)+'</b><span>Total en vales</span></div><div class="stat"><b>'+a.moves.length+'</b><span>Cobros</span></div></div>'+
+         (a.moves.length? a.moves.map(function(x){return '<div class="row"><div><div class="name">'+x.t+'</div><div class="meta">'+esc(x.who)+'</div></div><span>+'+soles(x.amt)+'</span></div>';}).join("") : '<p class="empty" style="margin-top:10px">Todavía no recibiste pagos con vale.</p>')+'</div>';
+    return h;
+  }
+
+  /* ---------- Render ---------- */
+  function renderRoles(){
+    document.getElementById("roles").innerHTML = ROLES.map(function(r){
+      return '<button class="role" type="button" data-role="'+r.id+'" aria-pressed="'+(role===r.id)+'">'+esc(r.label)+(r.hint?'<small>'+r.hint+'</small>':"")+'</button>';
+    }).join("");
+  }
+  function renderSteps(){
+    var nowSet = false;
+    document.getElementById("steps").innerHTML = STEPS.map(function(st){
+      var d = st.done(state), cls = d?"done":"";
+      if(!d && !nowSet){ cls="now"; nowSet=true; }
+      return '<li class="'+cls+'">'+esc(st.text)+'<span class="who">'+st.who+'</span></li>';
+    }).join("");
+  }
+  function renderLedger(){
+    document.getElementById("ledger").innerHTML = state.ledger.map(function(t){
+      var cls = "tx"+(t.ok?"":" fail")+(t.seed?" seed":"")+(t.isNew?" new":"");
+      t.isNew = false;
+      return '<li class="'+cls+'"><div class="op">'+esc(t.op)+(t.ok?"":" · rechazada")+'</div><div class="desc">'+esc(t.desc)+'</div>'+
+             (t.code?'<div class="code">'+t.code+'</div>':"")+'<div class="hash">'+short(t.hash)+'</div></li>';
+    }).join("");
+  }
+  function renderView(){
+    var v = document.getElementById("view");
+    v.innerHTML = role==="empresa"? viewEmpresa() : role==="maria"? viewMaria() : viewComercio(role);
+  }
+  function render(){ renderRoles(); renderSteps(); renderView(); renderLedger(); }
+
+  /* ---------- Events ---------- */
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b || b.disabled) return;
+    if(b.dataset.role){ role = b.dataset.role; render(); return; }
+    var a = b.dataset.act, id = b.dataset.id;
+    if(!a) return;
+    if(a==="approve") act.verify(id,true);
+    else if(a==="reject") act.verify(id,false);
+    else if(a==="create"){
+      var n = document.getElementById("pname").value.trim()||"Alimentación",
+          m = Math.max(1, Math.round(Number(document.getElementById("pamt").value)||50)),
+          d = document.getElementById("pdate").value||state.defaultDate;
+      act.createProgram(n,m,d);
+    }
+    else if(a==="deliver") act.deliver();
+    else if(a==="expire") act.expire();
+    else if(a==="pickTo"){ state.pay.to = id; state.pay.result = null; }
+    else if(a==="pay"){ state.pay.amount = document.getElementById("payamt").value; act.pay(); }
+    render();
+  });
+  document.addEventListener("input", function(e){
+    if(e.target.id==="payamt") state.pay.amount = e.target.value;
+  });
+  document.getElementById("reset").addEventListener("click", function(){ state = fresh(); role="empresa"; lastStamp=""; render(); });
+
+  document.getElementById("evidence").innerHTML = EVIDENCE.map(function(r){
+    return '<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td><td><a href="https://stellar.expert/explorer/testnet/tx/'+r[2]+'" target="_blank" rel="noopener">'+short(r[2])+'</a></td></tr>';
+  }).join("");
+
+  state = fresh();
+  render();
+})();
+</script>
+</body>
+</html>
