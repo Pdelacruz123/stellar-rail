@@ -196,23 +196,28 @@ CREATE TABLE eventos (
 
 ## 6. API
 
-| Método y ruta | Qué hace |
+Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la peticion:
+
+| Peticion | Que hace |
 |---|---|
-| `POST /api/programas` | Crea un programa |
-| `POST /api/beneficiarios` | Registra en `pendiente`, crea cuenta y trustline |
-| `POST /api/beneficiarios/:id/verificar` | Aprueba (ejecuta `autorizar`) o rechaza |
-| `POST /api/comercios` | Registra en `pendiente`, crea cuenta y trustline |
-| `POST /api/comercios/:id/verificar` | Aprueba o rechaza |
-| `POST /api/programas/:id/entregar` | Emite a los beneficiarios verificados |
-| `POST /api/pagos` | Beneficiario paga a comercio (QR o código de 6 dígitos) |
-| `POST /api/programas/:id/vencer` | Congela y anula |
+| `GET /api/sesion` | Devuelve la sesion del visitante, creandola si es su primera visita |
+| `POST /api/entrar` | Abre el panel del emisor con la clave |
+| `GET /api/beneficiarios` | Lista los de la sesion |
+| `POST /api/beneficiarios` | Registra uno: crea su cuenta y su trustline, en `pendiente` |
+| `POST /api/beneficiarios` `{accion:'verificar'}` | Aprueba, y al aprobar **ejecuta `autorizar` en la red**, o rechaza |
+| `GET` y `POST /api/comercios` | Lo mismo para comercios, mas su codigo de 6 digitos |
+| `GET /api/programas` | Lista los programas |
+| `POST /api/programas` | Crea uno |
+| `POST /api/programas` `{accion:'entregar'}` | Emite a los beneficiarios verificados |
+| `POST /api/programas` `{accion:'vencer'}` | Congela y anula |
+| `POST /api/pagos` | El beneficiario paga a un comercio, por QR o codigo corto |
 | `GET /api/eventos` | Historial con hash y enlace al explorador |
 
-Las rutas del emisor exigen autenticación: la URL es pública y sin ella cualquiera podría aprobar beneficiarios o vencer programas.
+**Por que las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una funcion, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por accion serian 11, mas la del vencimiento programado: justo en el limite y sin margen, ademas de once paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7, con cinco de reserva.
 
-`POST /api/pagos` **no comprueba si el comercio está afiliado.** Envía el pago y traduce lo que responda la red. Validarlo antes convertiría una regla del protocolo en una regla nuestra, que es justo lo contrario de lo que el proyecto propone.
+**Las rutas del emisor exigen autenticacion.** La URL es publica; sin puerta, cualquiera podria aprobar beneficiarios o vencer el programa y dejar la demo inservible. La clave esta en el README para que el jurado pueda entrar: es testnet y no protege nada de valor.
 
----
+**`POST /api/pagos` no comprueba si el comercio esta afiliado.** Envia el pago y traduce lo que responda la red. Comprobarlo antes convertiria una regla del protocolo en una regla nuestra, que es lo contrario de lo que propone el proyecto. Por eso un rechazo responde `200` y no un error: no es un fallo, es el resultado, y llega con su hash y su enlace al explorador.
 
 ## 7. Decisiones y sus motivos
 
