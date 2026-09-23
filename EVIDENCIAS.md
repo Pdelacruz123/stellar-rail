@@ -256,6 +256,33 @@ Operación: `Change Trust` · Activo: `ALIM` (Alphanumeric 4) · Límite: por de
 
 ---
 
+## Evidencias 9 a 18: el ciclo completo ejecutado por la aplicación desplegada
+
+Las evidencias 1 a 8 se hicieron a mano en Stellar Lab. Estas las generó **la aplicación en producción**, en <https://stellar-rail.vercel.app>, recorriendo el flujo por HTTP como lo haría cualquier visitante: registro, verificación, entrega, pago, rechazo y vencimiento.
+
+Fecha: 2026-09-22. Un solo recorrido, ledgers 4819984 a 4819993, consecutivos.
+
+| # | Qué hizo la aplicación | Operación | Resultado | Ledger | Transacción |
+|---|---|---|---|---|---|
+| 9 | Registra a la beneficiaria: crea su cuenta y su trustline, con las reservas a cargo del emisor | `Begin Sponsoring` + `Create Account` + `Change Trust` + `End Sponsoring` | exitosa | 4819984 | [`2d6f14b0…`](https://stellar.expert/explorer/testnet/tx/2d6f14b0680987e0b58029a7c4df0e9c0f0642e72ea39f65e137e376e0a707cc) |
+| 10 | Registra la Bodega Don Julio | ídem | exitosa | 4819985 | [`321975b3…`](https://stellar.expert/explorer/testnet/tx/321975b34daaec24bc2a6f3336fdc862b75fea2af1a5645632df8247185451d3) |
+| 11 | Registra el Minimarket La Esquina, que **no se afiliará** | ídem | exitosa | 4819986 | [`fd51c7e7…`](https://stellar.expert/explorer/testnet/tx/fd51c7e72184e26fe818d48bdcd834cfee1d7120837c6d0c8d4adff42d0fb52d) |
+| 12 | **El emisor aprueba a la beneficiaria.** Esta transacción *es* la verificación | `Set Trust Line Flags` | exitosa | 4819987 | [`1f0fd708…`](https://stellar.expert/explorer/testnet/tx/1f0fd708c9ad8b4c3ccc3918476e42536a771aea8c50e01beab62ee8299e99fc) |
+| 13 | El emisor afilia la Bodega Don Julio | `Set Trust Line Flags` | exitosa | 4819988 | [`e1573eb4…`](https://stellar.expert/explorer/testnet/tx/e1573eb4f3d1fbcb071bb2901c4915d647ab80b6bc77ea6de14be3c21eef0e93) |
+| 14 | Entrega el vale: 50 `ALIM` | `Payment` | exitosa | 4819989 | [`d9fca0da…`](https://stellar.expert/explorer/testnet/tx/d9fca0da71b1b49a4cdd4f6be52f842a3a57a09b433501d48c760b936b37ab05) |
+| 15 | **Pago aceptado** de 18,50 `ALIM` en la bodega afiliada, con el código de 6 dígitos | `Payment` | exitosa | 4819990 | [`22cd8fa5…`](https://stellar.expert/explorer/testnet/tx/22cd8fa5641549e0a46c1ceb5cfb99ca91348f2583c649268892f057142b3ac4) |
+| 16 | **Pago rechazado** por la red en el comercio no afiliado | `Payment` | `op_not_authorized` | 4819991 | [`a0a3c4d2…`](https://stellar.expert/explorer/testnet/tx/a0a3c4d2ef35aa161cafd05f1ad1b7c9a339485f5ec7668cea500b1a359c237b) |
+| 17 | **Vencimiento:** congela y anula el saldo en una sola transacción atómica | `Set Trust Line Flags` + `Clawback` | exitosa | 4819992 | [`c766fdab…`](https://stellar.expert/explorer/testnet/tx/c766fdab0893bac13bcfb7b2c3019ee18e8c5d137a683df722cae6924076d358) |
+| 18 | **Pago bloqueado** con el vale ya vencido | `Payment` | `op_src_not_authorized` | 4819993 | [`48c8e6c2…`](https://stellar.expert/explorer/testnet/tx/48c8e6c2c74833aa2cabf3816edf95c9d2b8477a45999be5e5155f60c0989a96) |
+
+**Las dos comparaciones que importan.** La 15 y la 16 son el mismo pago, del mismo monto, firmado por la misma cuenta, con el mismo saldo. La única diferencia es que el emisor afilió a un comercio y al otro no, y por eso una se ejecutó y la otra la rechazó el protocolo. La 15 y la 18 van hacia el mismo comercio afiliado: la segunda falla porque entre medias venció el programa.
+
+**Los rechazos también son comprobables.** Las evidencias 16 y 18 están en el ledger, con `successful: false` y 100 stroops de comisión cada una. Se verifican con su hash igual que cualquier operación exitosa.
+
+**Sobre las reservas.** Las altas 9, 10 y 11 usan reservas patrocinadas: el emisor paga el depósito de 1,5 XLM que la red exige por cada cuenta. La beneficiaria queda con un saldo mínimo exigido de cero y no necesita conseguir XLM para cobrar su vale.
+
+---
+
 ## Reglas para este archivo
 
 - Nunca escribir claves secretas (`S...`) aquí ni en ningún archivo del repositorio.
