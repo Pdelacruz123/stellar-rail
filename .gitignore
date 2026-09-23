@@ -29,3 +29,6 @@ GUIA_DESARROLLO.md
 CLAUDE.md
 # Configuracion local de Claude Code.
 .claude/
+# Maqueta provisional. Es solo referencia interna de pantallas y flujos;
+# la interfaz real esta sin decidir y esto no representa el producto.
+docs/prototipo.html

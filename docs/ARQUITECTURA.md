@@ -302,7 +302,7 @@ Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacci�
 **En construcción**
 
 - `api/`: los endpoints de la sección 6.
-- `src/`: las tres vistas. El prototipo visual está en [docs/prototipo.html](prototipo.html).
+- `src/`: las tres vistas. La interfaz está sin decidir.
 - Neon: el esquema de la sección 5.
 
 Para reproducir el ciclo completo:
