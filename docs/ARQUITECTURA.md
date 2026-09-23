@@ -290,24 +290,33 @@ Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacci�
 
 ---
 
-## 9. Estado al 22 de septiembre
+## 9. Estado
 
-**Construido y verificado en testnet**
+**Construido y verificado**
 
-- `lib/riel/`: las operaciones completas, con hash previo al envío, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
-- `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. Devuelve código distinto de cero si algo no cuadra. **No necesita configuración**: crea su propio emisor con Friendbot.
-- Reservas patrocinadas, vencimiento atómico y creación de cuentas en lote, cada uno probado contra la red.
-- Nueve transacciones del ciclo ejecutado a mano, en [EVIDENCIAS.md](../EVIDENCIAS.md).
+- `lib/riel/`: las operaciones completas, con el hash calculado antes de enviar, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
+- `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
+- `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
+- `api/`: las siete funciones, probadas de punta a punta contra la base y la red.
+- `src/`: las tres vistas, con estilo sobrio a la espera del diseño definitivo.
+- La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
+- Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 
-**En construcción**
+**Pendiente**
 
-- `api/`: los endpoints de la sección 6.
-- `src/`: las tres vistas. La interfaz está sin decidir.
-- Neon: el esquema de la sección 5.
+- Vencimiento programado con Vercel Cron. El plan gratuito admite una ejecución diaria, suficiente para vencimientos por día; el botón del emisor ya cubre la demo.
+- Lectura del QR con la cámara. El comercio ya muestra un QR con URI SEP-7 y su código de 6 dígitos; el pago por código funciona.
+- Diseño visual definitivo.
 
-Para reproducir el ciclo completo:
+Para reproducir el ciclo desde cero, sin configurar nada:
 
 ```bash
 npm install
 npm run ciclo
+```
+
+Para levantar la interfaz en local, contra la API desplegada:
+
+```bash
+npm run dev
 ```
