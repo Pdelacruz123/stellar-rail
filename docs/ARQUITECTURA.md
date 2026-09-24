@@ -89,7 +89,7 @@ No hay contrato inteligente. Las tres garantías son capacidades del protocolo, 
 
 El track pide controles de cumplimiento. La respuesta de Rail no es un campo `verificado` en una tabla: **la aprobación ejecuta la autorización en la red.**
 
-1. El beneficiario se registra con su nombre. La API le crea una cuenta y su trustline hacia `ALIM`, y la guarda en `pendiente`.
+1. El beneficiario abre la invitación de su empresa en su celular y escribe su nombre. La API le crea una cuenta y su trustline hacia `ALIM`, y la guarda en `pendiente`.
 2. La trustline **nace sin autorizar**: la cuenta existe y pidió poder recibir el vale, pero todavía no puede. Tener el activo exige dos voluntades, la de la cuenta y la del emisor.
 3. El emisor revisa su bandeja.
 4. **Si aprueba**, la API ejecuta `autorizar(cuenta)` en la red. El estado pasa a `verificado` y se guarda el hash de esa transacción. Desde ese momento la cuenta puede recibir el vale.
@@ -196,28 +196,24 @@ CREATE TABLE eventos (
 
 ## 6. API
 
-Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la peticion:
+Seis funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la petición:
 
-| Peticion | Que hace |
-|---|---|
-| `GET /api/sesion` | Devuelve la sesion del visitante, creandola si es su primera visita |
-| `POST /api/entrar` | Abre el panel del emisor con la clave |
-| `GET /api/beneficiarios` | Lista los de la sesion |
-| `POST /api/beneficiarios` | Registra uno: crea su cuenta y su trustline, en `pendiente` |
-| `POST /api/beneficiarios` `{accion:'verificar'}` | Aprueba, y al aprobar **ejecuta `autorizar` en la red**, o rechaza |
-| `GET` y `POST /api/comercios` | Lo mismo para comercios, mas su codigo de 6 digitos |
-| `GET /api/programas` | Lista los programas |
-| `POST /api/programas` | Crea uno |
-| `POST /api/programas` `{accion:'entregar'}` | Emite a los beneficiarios verificados |
-| `POST /api/programas` `{accion:'vencer'}` | Congela y anula |
-| `POST /api/pagos` | El beneficiario paga a un comercio, por QR o codigo corto |
-| `GET /api/eventos` | Historial con hash y enlace al explorador |
+| Petición | Qué hace | Quién |
+|---|---|---|
+| `GET /api/sesion` | Quién soy. En la primera visita crea el espacio de una empresa nueva | Todos |
+| `POST /api/sesion` `{token}` | Entrar con una invitación, como trabajador o comercio | Invitados |
+| `GET /api/beneficiarios` | La empresa ve a todos; un trabajador, solo a sí mismo | Empresa, trabajador |
+| `POST /api/beneficiarios` | Registrarse con una invitación: crea su cuenta y su trustline, en `pendiente` | Empresa, trabajador |
+| `POST /api/beneficiarios` `{accion:'verificar'}` | Aprueba, y al aprobar **ejecuta `autorizar` en la red**, o rechaza | Empresa |
+| `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro y su código de 6 dígitos | Según el caso |
+| `GET /api/programas` | Programas del espacio, con sus rubros y su vencimiento | Todos |
+| `POST /api/programas` | Crear, `entregar` o `vencer` | Empresa |
+| `POST /api/pagos` | El trabajador paga a un comercio, por QR o código | Trabajador |
+| `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
-**Por que las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una funcion, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por accion serian 11, mas la del vencimiento programado: justo en el limite y sin margen, ademas de once paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7, con cinco de reserva.
+**Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción serían 11, más la del vencimiento programado: justo en el límite y sin margen, además de once paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 6.
 
-**Las rutas del emisor exigen autenticacion.** La URL es publica; sin puerta, cualquiera podria aprobar beneficiarios o vencer el programa y dejar la demo inservible. La clave esta en el README para que el jurado pueda entrar: es testnet y no protege nada de valor.
-
-**`POST /api/pagos` no comprueba si el comercio esta afiliado.** Envia el pago y traduce lo que responda la red. Comprobarlo antes convertiria una regla del protocolo en una regla nuestra, que es lo contrario de lo que propone el proyecto. Por eso un rechazo responde `200` y no un error: no es un fallo, es el resultado, y llega con su hash y su enlace al explorador.
+**`POST /api/pagos` no comprueba si el comercio está afiliado.** Envía el pago y traduce lo que responda la red. Comprobarlo antes convertiría una regla del protocolo en una regla nuestra. Un pago no hecho responde `200` y no un error, y el campo `controlDe` dice quién lo frenó: `red`, con su hash y su código, o `aplicacion`, si el programa no cubre ese rubro, sin transacción. Las dos cosas no se confunden.
 
 ## 7. Decisiones y sus motivos
 
@@ -263,6 +259,29 @@ Para anular hay que saber cuánto queda. Si se lee el saldo y luego se congela e
 
 Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacción entera y no se aplica nada. Se vuelve a leer y se reintenta. Comprobado provocando la carrera a propósito en testnet.
 
+### Acceso sin contraseñas
+
+Ni la empresa, ni el trabajador, ni la bodega escriben una clave. Quien abre la aplicación sin traer un espacio crea el de una empresa nueva y es su emisor. La empresa invita con dos enlaces, uno para trabajadores y otro para comercios, que se comparten por WhatsApp o se muestran como QR. Cada persona lo abre en su celular y entra directo a su pantalla, sin pestañas ni menús que no le sirven.
+
+El perfil de cada dispositivo viaja en una cookie **firmada con `MASTER_SEED` y atada a su espacio**. Conocer el identificador de un espacio ajeno no da acceso a nada: sin la firma, se recibe un espacio nuevo y vacío. Una invitación tampoco se puede convertir en otra: cambiar su rol o su espacio invalida la firma. Invitar no aprueba a nadie; el control sigue siendo la verificación, que se ejecuta en la red.
+
+Así el jurado entra sin credenciales y ningún visitante puede estropear la demostración de otro.
+
+### Rubros: lo que la red ve y lo que no
+
+La red sabe quién le paga a quién y cuánto. **No sabe qué se compró**: la canasta solo la ve el comercio. Ningún medio de pago lo resuelve solo; las tarjetas de alimentación actuales restringen por tipo de comercio, y en un supermercado separar la comida del resto depende del cajero.
+
+Rail lo resuelve en capas, y dice con precisión quién garantiza cada una:
+
+| Qué | Quién lo garantiza |
+|---|---|
+| Dónde se gasta: solo en comercios afiliados | **La red**, con `AUTH_REQUIRED` |
+| Qué rubro declara el comercio en cada cobro | **La red lo registra**: viaja en el memo de la transacción, que es público |
+| Que el programa cubra ese rubro | **La aplicación**, en este MVP. Hacerlo cumplir en la cadena exige Soroban |
+| Sancionar a un comercio que declara en falso | **La red**: desafiliarlo le impide volver a cobrar |
+
+El tipo de programa fija los rubros posibles. En la **prestación alimentaria** de la Ley 28051 solo cabe alimentos, porque la ley lo exige, y la empresa no puede cambiarlo. En un **bono o incentivo** la empresa elige.
+
 ### Otras
 
 | Decisión | Motivo |
@@ -289,6 +308,8 @@ Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacci�
 | Las reservas se recuperan cerrando la trustline y fusionando la cuenta | Revocar el patrocinio no sirve: traspasa la reserva al beneficiario, que no tiene XLM, y falla con `op_low_reserve`. Comprobado |
 
 ---
+| La red no ve qué se compra | El comercio declara el rubro en el memo y la aplicación lo compara con el programa. Un contrato Soroban lo haría cumplir en la cadena |
+| Un solo programa vigente por empresa | Todos los vales son `ALIM` y los saldos de dos programas se mezclarían. La salida es un activo por programa |
 
 ## 9. Estado
 
@@ -297,15 +318,15 @@ Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacci�
 - `lib/riel/`: las operaciones completas, con el hash calculado antes de enviar, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
-- `api/`: las siete funciones, probadas de punta a punta contra la base y la red.
-- `src/`: las tres vistas, con estilo sobrio a la espera del diseño definitivo.
+- `api/`: las seis funciones, probadas de punta a punta contra la base y la red, incluidos los intentos de falsificar invitaciones y perfiles.
+- `src/`: las tres vistas, probadas en un navegador real con varios dispositivos a la vez: invitación, registro, aprobación, pago con la cámara, aviso en vivo al comercio, rechazo de la red, control de rubros y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 
 **Pendiente**
 
 - Vencimiento programado con Vercel Cron. El plan gratuito admite una ejecución diaria, suficiente para vencimientos por día; el botón del emisor ya cubre la demo.
-- Lectura del QR con la cámara. El comercio ya muestra un QR con URI SEP-7 y su código de 6 dígitos; el pago por código funciona.
+- QR dinámico con el monto ya puesto, para comercios que venden de varios rubros. Hoy el QR es estático: lleva un enlace web que abre la cámara de cualquier celular, y el cliente escribe el monto. Un URI SEP-7, que entienden las billeteras de Stellar, tendría sentido el día que cada usuario tenga la suya.
 - Diseño visual definitivo.
 
 Para reproducir el ciclo desde cero, sin configurar nada:

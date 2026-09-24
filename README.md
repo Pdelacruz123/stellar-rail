@@ -31,7 +31,7 @@ Un vale digital emitido como activo en Stellar, con las reglas dentro del activo
 
 1. **Verificación:** el beneficiario y el comercio se registran; el emisor los verifica y, al aprobarlos, los autoriza en la red.
 2. **Entrega:** la empresa asigna saldo a sus trabajadores verificados.
-3. **Pago:** el trabajador paga a un comercio autorizado. Si el comercio no está autorizado, **la red rechaza el pago**.
+3. **Pago:** el trabajador escanea el QR de la bodega con la cámara de su celular, escribe el monto y confirma. Si el comercio no está autorizado, **la red rechaza el pago**.
 4. **Vencimiento:** al vencer el programa, el emisor congela el saldo y lo anula.
 
 Todo queda registrado en un libro público: cualquiera puede comprobar cada paso con un enlace.
@@ -83,6 +83,8 @@ La **Ley 28051** de prestaciones alimentarias y su reglamento (D.S. 013-2003-TR)
 
 Aclaración: el vencimiento no es un requisito de la ley. Es una regla que el emisor define en su programa.
 
+Por la misma razón, en un programa de **prestación alimentaria** la empresa no elige en qué se gasta: la aplicación fija el rubro en alimentos. En un **bono o incentivo**, que no está sujeto a esta ley, la empresa sí elige los rubros.
+
 ## Competencia
 
 | | Tarjetas de alimentación (Pluxee, Edenred) | Este proyecto |
@@ -118,11 +120,18 @@ Las administradoras existentes prueban que el mercado existe y paga. Nuestro dif
 
 Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo.
 
-<!-- Completar al cierre: lista de lo implementado durante la semana -->
+- **Riel de Stellar** (`lib/riel/`): emisión, autorización, pago, congelado y anulación. Reservas patrocinadas por el emisor, vencimiento en una sola transacción atómica, hash calculado antes de enviar, recuperación ante cortes de Horizon y ante choques de secuencia.
+- **Script del ciclo completo** (`npm run ciclo`): reproduce las evidencias con cuentas nuevas y comprueba el estado final contra Horizon.
+- **API** en funciones serverless de Vercel, con base de datos en Neon que nunca guarda saldos ni claves.
+- **Aplicación web** con tres perfiles: empresa, trabajador y comercio.
+- **Acceso sin contraseñas**: la empresa invita por enlace o QR, y cada persona entra desde su celular.
+- **Pago con la cámara del celular**, con confirmación antes de mover dinero, y **aviso en vivo** al comercio cuando le pagan.
+- **Rubros por programa**, declarados por el comercio en el memo de cada transacción.
+- **Evidencias 9 a 18**: el ciclo completo ejecutado por la aplicación desplegada.
 
 ## Estado actual
 
-El ciclo completo del vale está **ejecutado y verificable en Stellar Testnet**, hecho manualmente con Stellar Lab. La aplicación web, la automatización y la verificación simulada están en desarrollo.
+El ciclo completo del vale está **ejecutado y verificable en Stellar Testnet** de tres formas: a mano en Stellar Lab (evidencias 1 a 8), con un script que cualquiera puede correr, y desde la aplicación desplegada (evidencias 9 a 18).
 
 ## Actores
 
@@ -170,7 +179,42 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ## Cómo ejecutarlo
 
-**Reproducir el ciclo a mano** en [Stellar Lab](https://lab.stellar.org), red Testnet:
+### En línea, sin instalar nada
+
+Abre <https://stellar-rail.vercel.app>. Entras como **la empresa de un espacio nuevo**, sin contraseña: cada visitante tiene el suyo, así que nadie pisa la demostración de otro.
+
+1. En **Empresa**, comparte las dos invitaciones: una para trabajadores y otra para comercios. Ábrelas en otros celulares, o en ventanas privadas del navegador.
+2. Regístrate como comercio con un celular y como trabajador con otro.
+3. Vuelve a **Empresa** y aprueba a los dos: cada aprobación es una transacción en la red, con su comprobante. Deja un segundo comercio sin aprobar.
+4. Crea el programa y entrega los vales.
+5. Desde el celular del trabajador, escanea el QR del comercio con la cámara, escribe el monto y confirma. El comercio recibe el aviso sin recargar.
+6. Intenta pagar en el comercio que no aprobaste: **lo rechaza la red**.
+7. Vence el programa: el saldo se congela y se anula.
+
+Desde la pestaña Empresa también puedes ver las pantallas de trabajador y comercio, para recorrer todo con un solo dispositivo.
+
+### El ciclo completo desde la terminal
+
+No necesita configuración: crea su propio emisor con Friendbot. Requiere Node 22.12 o superior.
+
+```bash
+npm install
+npm run ciclo
+```
+
+### La aplicación en local
+
+```bash
+cp .env.example .env    # y completar ISSUER_SECRET, MASTER_SEED y DATABASE_URL
+npm run dev             # interfaz y API juntas en http://localhost:5173
+npm test                # pruebas unitarias
+```
+
+`npm run dev` ejecuta las mismas funciones que Vercel, contra la base de datos y la red de pruebas reales.
+
+### A mano, en Stellar Lab
+
+En [Stellar Lab](https://lab.stellar.org), red Testnet:
 
 1. Crear y fondear cuatro cuentas con Friendbot.
 2. En EMISOR: `Set Options` con `AUTH_REQUIRED`, `AUTH_REVOCABLE` y `AUTH_CLAWBACK_ENABLED`, antes de crear trustlines.
@@ -180,15 +224,12 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 6. TRABAJADOR paga a BODEGA_A (funciona) y a BODEGA_B (falla).
 7. EMISOR congela a TRABAJADOR y ejecuta `Clawback` por el saldo restante.
 
-**Aplicación y script:** en construcción.
-
-<!-- Completar: requisitos, variables de entorno, npm install, npm run dev, node scripts/ciclo.js, URL pública -->
-
 ## Limitaciones
 
 - **El clawback destruye el saldo.** No lo devuelve como tokens al emisor; el emisor recupera su respaldo en soles, que deja de estar comprometido.
 - **El vencimiento no lo dispara la red.** Stellar no ejecuta tareas programadas. En el MVP lo ejecuta el emisor con un botón.
-- **Las categorías de gasto no son nativas.** Stellar controla quién puede tener el activo, no el rubro. La propuesta es un activo por categoría (`ALIM`, `TRAN`). Un contrato Soroban que valide categoría y vigencia es un siguiente paso.
+- **La red no ve qué se compra.** Stellar controla quién puede tener el vale y dónde se gasta, no el producto: la canasta solo la ve el comercio. Por eso el comercio **declara el rubro** en cada cobro y esa declaración viaja en el memo de la transacción, que es pública. Si declara en falso, la prueba queda registrada, y la sanción, desafiliarlo, sí la hace cumplir la red. Que un programa acepte o no un rubro **lo comprueba la aplicación** en este MVP; hacerlo cumplir en la cadena requiere un contrato Soroban.
+- **Un programa vigente por empresa a la vez.** Todos los vales son el mismo activo, `ALIM`, así que los saldos de dos programas se mezclarían en la misma cuenta. Separarlos exige un activo por programa.
 - **Verificación simulada.** No se procesan datos reales de identidad.
 - **Sin cuenta distribuidora.** El emisor paga directo; en producción conviene separar ambos roles.
 - **Un beneficiario autorizado podría transferir vales a otro tenedor autorizado.** Cerrarlo requiere Soroban o un esquema donde solo los comercios reciban.
@@ -203,12 +244,13 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ## Próximos pasos
 
-1. Script que reproduce el ciclo con un comando.
-2. Aplicación web con verificación, entrega, pago por QR y vencimiento.
+1. **Un activo por programa**: cada empresa afilia a sus propios comercios en la cadena y los saldos de distintos programas dejan de mezclarse.
+2. **Contrato Soroban** que haga cumplir en la red los rubros y la vigencia.
 3. KYC con SEP-12.
-4. Contrato Soroban para categorías y vigencia.
-5. Piloto con una empresa y bodegas de un distrito.
-6. Postulación a Instawards y Stellar Community Fund.
+4. QR dinámico con el monto ya puesto, para comercios que venden de varios rubros.
+5. Cobertura sin datos móviles: SMS o USSD.
+6. Piloto con una empresa y bodegas de un distrito.
+7. Postulación a Instawards y Stellar Community Fund.
 
 ## Fuentes
 
@@ -221,7 +263,15 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 Licencia MIT (ver `LICENSE`).
 
-<!-- Completar: librerías y plantillas de terceros con su licencia -->
+| Librería | Uso | Licencia |
+|---|---|---|
+| [`@stellar/stellar-sdk`](https://github.com/stellar/js-stellar-sdk) | Operaciones en la red | Apache-2.0 |
+| [`@neondatabase/serverless`](https://github.com/neondatabase/serverless) | Base de datos | MIT |
+| [`vue`](https://github.com/vuejs/core) | Interfaz | MIT |
+| [`qrcode`](https://github.com/soldair/node-qrcode) | Códigos QR | MIT |
+| [`vite`](https://github.com/vitejs/vite) y [`@vitejs/plugin-vue`](https://github.com/vitejs/vite-plugin-vue) | Compilación y servidor de desarrollo | MIT |
+
+No se usaron plantillas de terceros.
 
 ## Equipo
 
