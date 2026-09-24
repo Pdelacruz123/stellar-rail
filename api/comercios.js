@@ -1,40 +1,52 @@
 /**
  * /api/comercios
  *
- *   GET                                         la empresa ve a todos; un
- *                                               comercio, solo a si mismo; un
- *                                               trabajador, los del espacio
- *   POST { nombre, distrito, telefono, rubro }  registrarse o darlo de alta
- *   POST { accion:'verificar', id, aprobar }    la empresa afilia o rechaza
- *   POST { accion:'cobrar', monto, rubro }      el comercio genera un QR con
- *                                               monto, firmado, que caduca
+ *   GET                                          la empresa ve a todas, con su
+ *                                                celular; una tienda, solo a si
+ *                                                misma; un trabajador, las del
+ *                                                espacio
+ *   POST { invitacion, nombre, rubro, distrito,  registrarse con una invitacion
+ *          celular, pin }
+ *   POST { nombre, rubro, distrito, celular, pin }  la empresa la da de alta
+ *   POST { accion:'verificar', id, aprobar }     afiliar o rechazar
+ *   POST { accion:'restablecer', id }            enlace para un PIN nuevo
+ *   POST { accion:'cobrar', monto, rubro }       la tienda genera un QR con
+ *                                                monto, firmado, que caduca
  *
- * El registro pide el nombre y nada mas es obligatorio. Muchas bodegas de
- * Lima no tienen RUC o estan en el RUS: exigirlo dejaria fuera al usuario
- * que decimos atender.
+ * El registro pide el nombre y nada mas del negocio. Muchas bodegas de Lima
+ * no tienen RUC o estan en el RUS: exigirlo dejaria fuera al usuario que
+ * decimos atender.
  */
 import {
-  anotar, cuerpo, exigir, identidad, json, manejar, ponerRol, riel,
+  anotar, cuerpo, exigir, exigirSesion, iniciarSesion, json, leerIdentidad,
+  leerInvitacion, manejar, riel, tokenDeRestablecer,
 } from '../lib/http.js';
-import { codigoCorto, derivarCuenta } from '../lib/cuentas.js';
+import { altaConAcceso } from '../lib/altas.js';
 import { crearCobro } from '../lib/cobros.js';
 import { esRubro } from '../lib/rubros.js';
 import * as db from '../lib/db.js';
 
+function comprobarRubro(datos) {
+  const rubro = datos.rubro ?? 'alimentos';
+  if (!esRubro(rubro)) throw new TypeError('Ese rubro no existe.');
+  return { ...datos, rubro };
+}
+
 export default manejar({
   async GET(req, res) {
-    const yo = await identidad(req, res);
+    const yo = await exigirSesion(req, res);
+    if (!yo) return undefined;
     if (yo.rol === 'empresa') {
-      return json(res, 200, { comercios: await db.comerciosDe(yo.sesion) });
+      return json(res, 200, { comercios: await db.comerciosConAcceso(yo.sesion) });
     }
     if (yo.rol === 'comercio') {
-      const propio = yo.id === null ? null : await db.comercio(yo.sesion, yo.id);
-      return json(res, 200, { comercios: propio ? [propio] : [] });
+      const fila = await db.comercio(yo.sesion, yo.id);
+      return json(res, 200, { comercios: fila ? [fila] : [] });
     }
     if (yo.rol === 'beneficiario') {
-      // El trabajador ve todos los comercios de su empresa, afiliados o no.
-      // A proposito: la aplicacion no le impide intentar pagar en uno no
-      // afiliado. Quien lo impide es la red, y eso es lo que se demuestra.
+      // El trabajador ve todas las tiendas de su empresa, afiliadas o no.
+      // A proposito: la aplicacion no le impide intentar pagar en una no
+      // afiliada. Quien lo impide es la red, y eso es lo que se demuestra.
       const todos = await db.comerciosDe(yo.sesion);
       return json(res, 200, {
         comercios: todos.map((c) => ({
@@ -51,40 +63,29 @@ export default manejar({
   },
 
   async POST(req, res) {
-    const yo = await identidad(req, res);
     const datos = await cuerpo(req);
     const r = riel();
 
-    if (datos.accion === 'verificar') {
-      if (!exigir(yo, res, 'empresa')) return undefined;
-      const fila = await db.comercio(yo.sesion, datos.id);
-      if (!fila) return json(res, 404, { error: 'Ese comercio no existe.' });
-      if (fila.estado !== 'pendiente') {
-        return json(res, 409, { error: `Ya estaba ${fila.estado}.` });
-      }
-
-      if (!datos.aprobar) {
-        const rechazado = await db.guardarVerificacion('comercios', fila.id, 'rechazado');
-        return json(res, 200, { comercio: rechazado });
-      }
-
-      // Afiliar un comercio no es un campo en una tabla: es esta transaccion,
-      // publica y comprobable por cualquiera con el hash.
-      const tx = await r.autorizar(fila.cuenta_publica);
-      const evento = await anotar(yo.sesion, 'autorizar', tx, r);
-      if (!tx.ok) return json(res, 502, { error: tx.mensaje, transaccion: evento });
-      const verificado = await db.guardarVerificacion('comercios', fila.id, 'verificado', tx.hash);
-      return json(res, 200, { comercio: verificado, transaccion: evento });
+    // --- Registrarse con una invitacion: todavia no hay sesion.
+    if (datos.invitacion) {
+      const inv = leerInvitacion(datos.invitacion);
+      if (!inv || inv.rol !== 'comercio') return json(res, 400, { error: 'Esta invitación no es válida.' });
+      if (!await db.sesion(inv.sesion)) return json(res, 404, { error: 'Esta invitación ya no existe.' });
+      const alta = await altaConAcceso(r, inv.sesion, 'comercio', comprobarRubro(datos));
+      if (!alta.ok) return json(res, 502, { error: 'No se pudo crear tu cuenta. Inténtalo otra vez.', transaccion: alta.evento });
+      iniciarSesion(req, res, alta.usuario);
+      return json(res, 201, { comercio: alta.fila, transaccion: alta.evento });
     }
+
+    const yo = await leerIdentidad(req);
+    if (!yo) return json(res, 401, { error: 'Tu sesión terminó. Vuelve a entrar.', sinSesion: true });
 
     // --- Cobrar con monto: el QR dinamico. El rubro lo declara la tienda en
     // cada venta; va firmado, asi que el cliente no puede cambiarlo.
     if (datos.accion === 'cobrar') {
-      if (!exigir(yo, res, 'comercio', 'empresa')) return undefined;
-      const id = yo.rol === 'comercio' ? yo.id : Number(datos.comercioId);
-      if (id === null) return json(res, 409, { error: 'Primero registra tu negocio.' });
-      const fila = await db.comercio(yo.sesion, id);
-      if (!fila) return json(res, 404, { error: 'Ese comercio no existe.' });
+      if (!exigir(yo, res, 'comercio')) return undefined;
+      const fila = await db.comercio(yo.sesion, yo.id);
+      if (!fila) return json(res, 404, { error: 'Tu tienda no existe.' });
       const cobro = crearCobro({
         sesion: yo.sesion,
         comercioId: fila.id,
@@ -94,35 +95,42 @@ export default manejar({
       return json(res, 201, { cobro: { ...cobro, comercio: { id: fila.id, nombre: fila.nombre } } });
     }
 
-    if (!exigir(yo, res, 'empresa', 'comercio')) return undefined;
-    if (yo.rol === 'comercio' && yo.id !== null) {
-      return json(res, 409, { error: 'Tu negocio ya está registrado.' });
+    if (!exigir(yo, res, 'empresa')) return undefined;
+
+    // --- Alta por la empresa: la persona escribe su PIN en ese equipo.
+    if (!datos.accion) {
+      const alta = await altaConAcceso(r, yo.sesion, 'comercio', comprobarRubro(datos));
+      if (!alta.ok) return json(res, 502, { error: 'No se pudo crear la cuenta.', transaccion: alta.evento });
+      return json(res, 201, { comercio: alta.fila, transaccion: alta.evento });
     }
 
-    const nombre = String(datos.nombre ?? '').trim();
-    if (!nombre) return json(res, 400, { error: 'Falta el nombre del negocio.' });
-    const rubro = datos.rubro ?? 'alimentos';
-    if (!esRubro(rubro)) return json(res, 400, { error: 'Ese rubro no existe.' });
+    const fila = await db.comercio(yo.sesion, datos.id);
+    if (!fila) return json(res, 404, { error: 'Esa tienda no existe.' });
 
-    const id = await db.siguienteId('comercios');
-    const cuenta = derivarCuenta({ sesion: yo.sesion, rol: 'comercio', id });
+    switch (datos.accion) {
+      case 'verificar': {
+        if (fila.estado !== 'pendiente') return json(res, 409, { error: `Ya estaba ${fila.estado}.` });
+        if (!datos.aprobar) {
+          const rechazado = await db.guardarVerificacion('comercios', fila.id, 'rechazado');
+          return json(res, 200, { comercio: rechazado });
+        }
+        // Afiliar una tienda no es un campo en una tabla: es esta transaccion,
+        // publica y comprobable por cualquiera con el hash.
+        const tx = await r.autorizar(fila.cuenta_publica);
+        const evento = await anotar(yo.sesion, 'autorizar', tx, r);
+        if (!tx.ok) return json(res, 502, { error: tx.mensaje, transaccion: evento });
+        const verificado = await db.guardarVerificacion('comercios', fila.id, 'verificado', tx.hash);
+        return json(res, 200, { comercio: verificado, transaccion: evento });
+      }
 
-    const tx = await r.crearCuentaPatrocinada(cuenta);
-    const evento = await anotar(yo.sesion, 'alta-comercio', tx, r);
-    if (!tx.ok) return json(res, 502, { error: 'No se pudo crear la cuenta.', transaccion: evento });
+      case 'restablecer': {
+        const usuario = await db.usuarioDe(yo.sesion, 'comercio', fila.id);
+        if (!usuario) return json(res, 409, { error: 'Esta tienda todavía no tiene acceso.' });
+        return json(res, 200, { token: tokenDeRestablecer(usuario), nombre: fila.nombre });
+      }
 
-    const fila = await db.crearComercio({
-      id,
-      sesion: yo.sesion,
-      nombre,
-      distrito: String(datos.distrito ?? '').trim() || null,
-      telefono: String(datos.telefono ?? '').trim() || null,
-      rubro,
-      cuentaPublica: cuenta.publicKey(),
-      codigoCorto: codigoCorto({ sesion: yo.sesion, id }),
-    });
-
-    if (yo.rol === 'comercio') ponerRol(req, res, yo.sesion, 'comercio', fila.id);
-    return json(res, 201, { comercio: fila, transaccion: evento });
+      default:
+        return json(res, 400, { error: 'Acción desconocida.' });
+    }
   },
 });

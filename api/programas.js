@@ -7,7 +7,7 @@
  *   POST { accion:'vencer', id }                      congela y anula
  */
 import {
-  anotar, cuerpo, exigir, identidad, json, manejar, riel,
+  anotar, cuerpo, exigir, exigirSesion, json, manejar, riel,
 } from '../lib/http.js';
 import { MAX_OPERACIONES } from '../lib/riel/index.js';
 import { esTipo, rubrosDe } from '../lib/rubros.js';
@@ -21,14 +21,16 @@ const trozos = (lista, tamano) => Array.from(
 
 export default manejar({
   async GET(req, res) {
-    const yo = await identidad(req, res);
+    const yo = await exigirSesion(req, res);
+    if (!yo) return undefined;
     // El trabajador tambien lo necesita: ahi ve cuando vence su vale y en
     // que rubros lo puede usar.
     json(res, 200, { programas: await db.programasDe(yo.sesion) });
   },
 
   async POST(req, res) {
-    const yo = await identidad(req, res);
+    const yo = await exigirSesion(req, res);
+    if (!yo) return undefined;
     if (!exigir(yo, res, 'empresa')) return undefined;
     const datos = await cuerpo(req);
     const r = riel();
