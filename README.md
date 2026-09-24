@@ -1,4 +1,4 @@
-# Rail — vales programables sobre Stellar
+# StellarRail — vales programables sobre Stellar
 
 **Stellar Odyssey Perú** · Track 03: Real-World Assets & Compliant Rails
 
