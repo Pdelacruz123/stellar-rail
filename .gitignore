@@ -31,3 +31,6 @@ CLAUDE.md
 # Maqueta provisional. Es solo referencia interna de pantallas y flujos;
 # la interfaz real esta sin decidir y esto no representa el producto.
 docs/prototipo.html
+
+# Casos de uso: documento de diseno del equipo, sin aprobar como publico.
+docs/CASOS_DE_USO.md
