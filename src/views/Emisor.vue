@@ -8,7 +8,7 @@ import { RUBROS, TIPOS } from '../../lib/rubros.js';
 import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
 
-defineProps({ codigo: { type: String, default: '' } });
+defineProps({ codigo: { type: String, default: '' }, cobro: { type: String, default: '' } });
 
 const ultima = ref(null);
 const trabajando = ref('');
@@ -51,7 +51,7 @@ async function copiar(inv) {
 
 async function compartir(inv) {
   try {
-    await navigator.share({ title: 'Rail', text: MENSAJES[inv.rol], url: inv.enlace });
+    await navigator.share({ title: 'StellarRail', text: MENSAJES[inv.rol], url: inv.enlace });
   } catch {
     // La persona cerro el menu de compartir: no es un error.
   }
@@ -130,22 +130,46 @@ async function ejecutar(nombre, fn) {
 
 // --- Gasto en vivo, leido de Horizon y no de nuestra base de datos ----------
 
-const gasto = ref([]);
+const gasto = ref([]);     // lo que le queda a cada trabajador
+const tiendas = ref([]);   // lo que recibio cada tienda
+const errorGasto = ref('');
 async function cargarGasto() {
   if (!estado.yo) return;
   const { horizon, activo, emisor } = estado.yo;
-  const verificados = estado.beneficiarios.filter((b) => b.estado === 'verificado');
-  gasto.value = await Promise.all(verificados.map(async (b) => ({
-    nombre: b.nombre,
-    ...(await saldoEnLaRed(horizon, b.cuenta_publica, activo, emisor)),
-  })));
+  const leer = async (fila) => ({
+    nombre: fila.nombre,
+    ...(await saldoEnLaRed(horizon, fila.cuenta_publica, activo, emisor)),
+  });
+  try {
+    [gasto.value, tiendas.value] = await Promise.all([
+      Promise.all(estado.beneficiarios.filter((b) => b.estado === 'verificado').map(leer)),
+      Promise.all(estado.comercios.filter((c) => c.estado === 'verificado').map(leer)),
+    ]);
+    errorGasto.value = '';
+  } catch (e) {
+    errorGasto.value = e.message;
+  }
 }
-watch(() => estado.beneficiarios.length + estado.eventos.length, cargarGasto, { immediate: true });
+watch(
+  () => `${estado.beneficiarios.length}|${estado.comercios.length}|${estado.eventos.length}`,
+  cargarGasto,
+  { immediate: true },
+);
 
+const suma = (lista) => lista.reduce((s, x) => s + Number(x.saldo), 0);
+// "Entregado" cuenta vales emitidos de verdad, cada uno con su hash: no una
+// estimacion por cuantos trabajadores estan verificados.
 const entregado = computed(() => (programa.value
-  ? Number(programa.value.monto) * gasto.value.length
+  ? Number(programa.value.monto) * (programa.value.entregados ?? 0)
   : 0));
-const saldoVigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.saldo), 0));
+const saldoVigente = computed(() => suma(gasto.value));
+const gastado = computed(() => suma(tiendas.value));
+const anulado = computed(() => Math.max(0, entregado.value - gastado.value - saldoVigente.value));
+
+const verificados = computed(() => estado.beneficiarios.filter((b) => b.estado === 'verificado').length);
+const porEntregar = computed(() => (programa.value
+  ? Math.max(0, verificados.value - (programa.value.entregados ?? 0))
+  : 0));
 </script>
 
 <template>
@@ -160,7 +184,8 @@ const saldoVigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.sa
       <article v-for="inv in invitaciones" :key="inv.rol" class="invitacion">
         <h3>{{ inv.titulo }}</h3>
         <p class="apagado pequeno">{{ inv.detalle }}</p>
-        <Qr :texto="inv.enlace" :alt="`Código QR para ${inv.titulo.toLowerCase()}`" :tamano="170" />
+        <!-- Se lee desde una pantalla: basta la correccion media, que da un codigo menos denso. -->
+        <Qr :texto="inv.enlace" nivel="M" :alt="`Código QR para ${inv.titulo.toLowerCase()}`" :tamano="190" />
         <div class="acciones" style="margin-top:10px">
           <a class="boton si" :href="inv.whatsapp" target="_blank" rel="noopener">Enviar por WhatsApp</a>
           <button v-if="puedeCompartir" class="suave" @click="compartir(inv)">Compartir</button>
@@ -271,9 +296,11 @@ const saldoVigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.sa
       </div>
 
       <div v-if="programa.estado === 'vigente'" class="acciones" style="margin-top:12px">
-        <button :disabled="trabajando === 'entregar'"
+        <button :disabled="trabajando === 'entregar' || !porEntregar"
                 @click="ejecutar('entregar', () => api.entregar(programa.id))">
-          {{ trabajando === 'entregar' ? 'Entregando…' : 'Entregar vales' }}
+          {{ trabajando === 'entregar' ? 'Entregando…'
+            : porEntregar ? `Entregar vale a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
+              : 'Todos recibieron su vale' }}
         </button>
         <button class="suave" :disabled="trabajando === 'vencer'"
                 @click="ejecutar('vencer', () => api.vencer(programa.id))">
@@ -296,9 +323,13 @@ const saldoVigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.sa
     </p>
     <div class="cifras">
       <div class="cifra"><b>{{ soles(entregado) }}</b><span>Entregado</span></div>
-      <div class="cifra"><b>{{ soles(entregado - saldoVigente) }}</b><span>Gastado</span></div>
+      <div class="cifra"><b>{{ soles(gastado) }}</b><span>Gastado en tiendas</span></div>
       <div class="cifra"><b>{{ soles(saldoVigente) }}</b><span>Saldo vigente</span></div>
+      <div v-if="programa?.estado === 'vencido'" class="cifra">
+        <b>{{ soles(anulado) }}</b><span>Anulado al vencer</span>
+      </div>
     </div>
+    <p v-if="errorGasto" class="aviso espera">{{ errorGasto }}</p>
     <div v-for="g in gasto" :key="g.nombre" class="fila" style="margin-top:8px">
       <span>{{ g.nombre }}</span>
       <span>

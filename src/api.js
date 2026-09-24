@@ -35,6 +35,7 @@ export const api = {
   registrarComercio: (datos) => pedir('comercios', 'POST', datos),
   verificarComercio: (id, aprobar) =>
     pedir('comercios', 'POST', { accion: 'verificar', id, aprobar }),
+  cobrar: (datos) => pedir('comercios', 'POST', { accion: 'cobrar', ...datos }),
 
   programas: () => pedir('programas'),
   crearPrograma: (datos) => pedir('programas', 'POST', datos),
@@ -53,8 +54,21 @@ export const api = {
 // ---------------------------------------------------------------------------
 
 export async function saldoEnLaRed(horizon, cuenta, activo, emisor) {
-  const r = await fetch(`${horizon}/accounts/${cuenta}`);
-  if (!r.ok) return { existe: false, saldo: '0.0000000', autorizado: false, congelado: false };
+  // Un fallo de la red NO es un saldo de cero. Mostrarle "S/ 0.00" a alguien
+  // que acaba de recibir su vale lo asustaria. Se reintenta una vez y, si
+  // sigue fallando, se avisa de que no se pudo consultar.
+  let r;
+  for (let intento = 0; intento < 2; intento += 1) {
+    try {
+      r = await fetch(`${horizon}/accounts/${cuenta}`);
+      if (r.ok || r.status === 404) break;
+    } catch {
+      r = null;
+    }
+    await new Promise((listo) => { setTimeout(listo, 800); });
+  }
+  if (r?.status === 404) return { existe: false, saldo: '0.0000000', autorizado: false, congelado: false };
+  if (!r?.ok) throw new Error('No pudimos consultar el saldo. Revisa tu conexión e inténtalo otra vez.');
   const datos = await r.json();
   const linea = datos.balances.find((b) => b.asset_code === activo && b.asset_issuer === emisor);
   return {

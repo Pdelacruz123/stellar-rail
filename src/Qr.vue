@@ -1,9 +1,14 @@
 <script setup>
 /**
- * Un codigo QR. Lo usan las invitaciones y el cobro del comercio.
+ * Un codigo QR, pensado para que lo lea una camara barata con mala luz.
  *
- * Siempre contiene un enlace web normal. Asi lo abre la camara de cualquier
- * celular, iPhone o Android, sin instalar nada ni conceder permisos.
+ * - Margen de 4 modulos, el que exige la norma. Con menos, muchas camaras
+ *   no encuentran el codigo, y sobre fondo oscuro fallan casi siempre.
+ * - SVG en vez de imagen: se ve nitido a cualquier tamano, tambien impreso
+ *   en un cartel grande.
+ * - Correccion de errores "Q" por defecto (25 %): un cartel pegado en un
+ *   mostrador se ensucia y se raya, y aun asi tiene que leerse.
+ * - Siempre negro sobre blanco, tambien en modo oscuro.
  */
 import { ref, watch } from 'vue';
 import QRCode from 'qrcode';
@@ -11,17 +16,26 @@ import QRCode from 'qrcode';
 const props = defineProps({
   texto: { type: String, required: true },
   alt: { type: String, required: true },
-  tamano: { type: Number, default: 220 },
+  tamano: { type: Number, default: 240 },
+  nivel: { type: String, default: 'Q' },
 });
 
-const imagen = ref('');
-watch(() => props.texto, async (t) => {
-  imagen.value = t
-    ? await QRCode.toDataURL(t, { margin: 1, width: props.tamano * 2, errorCorrectionLevel: 'M' })
+const svg = ref('');
+watch(() => [props.texto, props.nivel], async ([texto, nivel]) => {
+  svg.value = texto
+    ? await QRCode.toString(texto, {
+      type: 'svg',
+      margin: 4,
+      errorCorrectionLevel: nivel,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
     : '';
 }, { immediate: true });
 </script>
 
 <template>
-  <img v-if="imagen" :src="imagen" :width="tamano" :height="tamano" :alt="alt" class="qr">
+  <div
+    class="qr" role="img" :aria-label="alt"
+    :style="{ width: `${tamano}px`, height: `${tamano}px` }"
+    v-html="svg" />
 </template>

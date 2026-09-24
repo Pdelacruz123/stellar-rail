@@ -85,6 +85,33 @@ export function fecha(valor) {
 }
 export const corto = (h) => `${h.slice(0, 8)}…${h.slice(-6)}`;
 
+/**
+ * Dice un texto en voz alta.
+ *
+ * Para quien lee con dificultad, oir "pagaste 18 soles con 50" es mas claro
+ * que leerlo. Y en la caja, el bodeguero no tiene que mirar el celular para
+ * saber que le pagaron: como las bocinas que avisan los pagos por QR.
+ */
+export function hablar(texto) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+  const frase = new SpeechSynthesisUtterance(texto);
+  frase.lang = 'es-PE';
+  frase.rate = 0.95;
+  const voz = window.speechSynthesis.getVoices().find((v) => v.lang?.startsWith('es'));
+  if (voz) frase.voice = voz;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(frase);
+  return true;
+}
+
+/** "18.50" -> "18 soles con 50 céntimos", para decirlo en voz alta. */
+export function enPalabras(monto) {
+  const c = Math.round(Number(monto) * 100);
+  const soles = Math.floor(c / 100);
+  const centimos = c % 100;
+  return `${soles} ${soles === 1 ? 'sol' : 'soles'}${centimos ? ` con ${centimos} céntimos` : ''}`;
+}
+
 /** Acepta "18,50" y "18.50". Devuelve el texto listo para la API, o null. */
 export function montoValido(texto) {
   const t = String(texto ?? '').trim().replace(',', '.');

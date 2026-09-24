@@ -10,13 +10,14 @@ import Comercio from './views/Comercio.vue';
  * el servidor, ni hay riesgo de que una ruta del navegador choque con /api.
  *
  *   #/unirse/<token>   entrar con una invitacion (lo resuelve estado.js)
- *   #/pagar/<codigo>   lo abre la camara del celular al escanear un QR de caja
+ *   #/pagar/<codigo>   QR fijo de una tienda: el cliente escribe el monto
+ *   #/cobro/<token>    QR con monto: el cliente solo confirma
  *   #/emisor, #/beneficiario, #/comercio   pestanas, solo para la empresa
  */
 const VISTAS = {
   emisor: { titulo: 'Empresa', comp: Emisor },
   beneficiario: { titulo: 'Trabajador', comp: Beneficiario },
-  comercio: { titulo: 'Comercio', comp: Comercio },
+  comercio: { titulo: 'Tienda', comp: Comercio },
 };
 
 const leerRuta = () => window.location.hash.replace(/^#\/?/, '');
@@ -29,19 +30,20 @@ const ir = (clave) => { window.location.hash = `#/${clave}`; };
 
 const partes = computed(() => ruta.value.split('/'));
 const codigoAPagar = computed(() => (partes.value[0] === 'pagar' ? partes.value[1] ?? '' : ''));
+const cobroAPagar = computed(() => (partes.value[0] === 'cobro' ? partes.value[1] ?? '' : ''));
 
 const rol = computed(() => estado.yo?.rol);
 const esEmpresa = computed(() => rol.value === 'empresa');
 
 /**
- * Un trabajador o un comercio solo ven su pantalla: nada de pestanas ni de
+ * Un trabajador o una tienda solo ven su pantalla: nada de pestanas ni de
  * menus que no les sirven. La empresa ve las tres, para poder recorrer toda
  * la demostracion desde un solo dispositivo.
  */
 const vista = computed(() => {
   if (rol.value === 'beneficiario') return 'beneficiario';
   if (rol.value === 'comercio') return 'comercio';
-  if (partes.value[0] === 'pagar') return 'beneficiario';
+  if (partes.value[0] === 'pagar' || partes.value[0] === 'cobro') return 'beneficiario';
   return VISTAS[partes.value[0]] ? partes.value[0] : 'emisor';
 });
 
@@ -55,10 +57,11 @@ onMounted(arrancar);
 </script>
 
 <template>
-  <div class="envoltura">
+  <!-- Letra mas grande para trabajador y tienda: la usan en la calle, de pie. -->
+  <div :class="['envoltura', { sencillo: !esEmpresa }]">
     <header class="cabecera">
       <div>
-        <h1>Rail</h1>
+        <h1>StellarRail</h1>
         <p class="apagado pequeno" style="margin:0">{{ subtitulo }}</p>
       </div>
     </header>
@@ -86,7 +89,7 @@ onMounted(arrancar);
 
     <template v-else>
       <div v-if="estado.error" class="aviso no" role="alert">{{ estado.error }}</div>
-      <component :is="VISTAS[vista].comp" :codigo="codigoAPagar" />
+      <component :is="VISTAS[vista].comp" :codigo="codigoAPagar" :cobro="cobroAPagar" />
     </template>
 
     <p v-if="esEmpresa" class="apagado pequeno" style="margin-top:28px">
