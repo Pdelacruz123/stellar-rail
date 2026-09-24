@@ -4,10 +4,9 @@ dist/
 *.log
 .DS_Store
 
-# Variables de entorno. Solo .env.example va al repositorio.
+# Variables de entorno. Nunca van al repositorio: el README dice cuales son.
 .env
 .env.*
-!.env.example
 
 # Claves secretas de Stellar. NUNCA deben llegar al repositorio.
 # Archivo de trabajo con las cuentas usadas en Stellar Lab:

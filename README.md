@@ -205,10 +205,19 @@ npm run ciclo
 
 ### La aplicación en local
 
+Crea un archivo `.env` en la raíz con estas tres variables. Nunca se sube: está en `.gitignore`.
+
+| Variable | Qué es |
+|---|---|
+| `ISSUER_SECRET` | Clave secreta de la cuenta emisora, en testnet |
+| `MASTER_SEED` | 64 caracteres hexadecimales al azar: `node -e "console.log(crypto.randomBytes(32).toString('hex'))"` |
+| `DATABASE_URL` | Cadena de conexión de una base PostgreSQL en Neon |
+
+La red, Horizon y el código del activo ya vienen configurados para testnet.
+
 ```bash
-cp .env.example .env    # y completar ISSUER_SECRET, MASTER_SEED y DATABASE_URL
-npm run dev             # interfaz y API juntas en http://localhost:5173
-npm test                # pruebas unitarias
+npm run dev    # interfaz y API juntas en http://localhost:5173
+npm test       # pruebas unitarias
 ```
 
 `npm run dev` ejecuta las mismas funciones que Vercel, contra la base de datos y la red de pruebas reales.
