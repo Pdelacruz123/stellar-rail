@@ -128,7 +128,9 @@ input, select {
 .aviso strong { display: block; margin-bottom: 4px; }
 
 /* Enlace al explorador: la prueba de cada accion */
-.prueba { font-size: .82rem; margin-top: 6px; word-break: break-all; }
+.prueba { font-size: .82rem; margin-top: 6px; }
+/* Solo el hash puede partirse, y solo si no cabe. Nunca una palabra. */
+.prueba code { overflow-wrap: anywhere; }
 .prueba code { font-family: ui-monospace, Consolas, monospace; }
 
 /* Cabecera y cambio de rol */
@@ -144,3 +146,67 @@ input, select {
 .cifra span { font-size: .8rem; color: var(--apagado); }
 
 .cargando { color: var(--apagado); font-size: .9rem; }
+
+
+/* Enlaces con aspecto de boton (WhatsApp). */
+a.boton {
+  display: inline-flex; align-items: center; min-height: 44px;
+  padding: 9px 15px; border-radius: 8px; font-weight: 600;
+  text-decoration: none; background: var(--tinta); color: var(--papel);
+}
+a.boton.si { background: var(--acento); color: #fff; }
+
+/* Opciones de radio y casillas: filas enteras tocables. */
+fieldset { border: 1px solid var(--linea); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+legend { font-size: .85rem; color: var(--apagado); padding: 0 4px; }
+label.opcion {
+  display: flex; align-items: center; gap: 10px; min-height: 40px;
+  color: var(--tinta); font-size: 1rem; margin: 0; cursor: pointer;
+}
+label.opcion input { width: 22px; height: 22px; min-height: 0; margin: 0; flex: none; }
+
+/* QR: siempre sobre blanco, que es lo que leen bien las camaras. */
+.qr { background: #fff; padding: 8px; border-radius: 8px; display: block; }
+
+/* Invitaciones */
+.invitaciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.invitacion { border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px; }
+
+/* El vale: el saldo, grande y en soles */
+.vale {
+  display: grid; gap: 2px; margin-top: 8px; padding: 18px 20px;
+  border-radius: 14px; background: var(--acento); color: #fff;
+}
+.vale b { font-size: clamp(2.2rem, 9vw, 3rem); line-height: 1.1; }
+.vale.congelado { background: var(--apagado); }
+
+/* Confirmacion de pago: sin letra chica en lo importante */
+.confirmacion { font-size: 1.25rem; margin-bottom: 4px; }
+
+/* Aviso de cobro recibido: se tiene que ver desde lejos, en la caja */
+.aviso-grande { font-size: 1.1rem; }
+.aviso-grande strong { font-size: 1.6rem; }
+
+/* Cobro */
+.cobro { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.codigo { font-size: 2.4rem; font-weight: 700; letter-spacing: .14em; margin: 0; }
+.solo-imprimir { display: none; }
+
+h3.bloque { font-size: 1rem; }
+
+/* Impresion: solo el QR de cobro, grande, para pegar en el mostrador. */
+@media print {
+  body { background: #fff; color: #000; }
+  body * { visibility: hidden; }
+  .imprimible, .imprimible * { visibility: visible; }
+  .imprimible {
+    position: absolute; left: 0; top: 0; width: 100%;
+    border: none; text-align: center;
+  }
+  .imprimible h2 { display: none; }
+  .imprimible .cobro { flex-direction: column; }
+  .imprimible .qr { width: 12cm; height: 12cm; }
+  .no-imprimir { display: none !important; }
+  .solo-imprimir { display: block; }
+  .nombre-impreso { font-size: 2rem; font-weight: 700; margin: 0; }
+}

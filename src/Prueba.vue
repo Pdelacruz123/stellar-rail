@@ -6,19 +6,20 @@
  * base de datos: cualquiera puede abrir el enlace y comprobarlo sin
  * confiar en nosotros.
  */
+import { computed } from 'vue';
 import { corto } from './estado.js';
 
-defineProps({
-  tx: { type: Object, required: true },   // { ok, hash, ledger, explorador, codigo, mensaje }
+const props = defineProps({
+  tx: { type: Object, required: true },   // { ok, hash, ledger, explorador, codigo }
 });
+
+const etiqueta = computed(() => (props.tx.ok
+  ? 'Comprobante:'
+  : `Código de la red: ${props.tx.codigo}. Comprobante:`));
 </script>
 
 <template>
   <p class="prueba apagado">
-    <template v-if="tx.ok">Comprobante</template>
-    <template v-else>La red lo rechazó: <code>{{ tx.codigo }}</code> · comprobante</template>
-    <a :href="tx.explorador" target="_blank" rel="noopener">
-      <code>{{ corto(tx.hash) }}</code></a>
-    <template v-if="tx.ledger"> · ledger {{ tx.ledger }}</template>
+    <span>{{ etiqueta }}</span> <a :href="tx.explorador" target="_blank" rel="noopener"><code>{{ corto(tx.hash) }}</code></a><span v-if="tx.ledger"> · ledger {{ tx.ledger }}</span>
   </p>
 </template>

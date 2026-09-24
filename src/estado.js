@@ -1,5 +1,5 @@
 /**
- * Estado compartido por las tres vistas.
+ * Estado compartido por las vistas.
  *
  * No hay saldos aqui. El saldo vive en Stellar y se lee de Horizon cada vez
  * que hace falta: si lo guardaramos, tendriamos una segunda verdad que puede
@@ -10,7 +10,7 @@ import { api } from './api.js';
 
 export const estado = reactive({
   cargando: true,
-  config: null,          // sesion, admin, emisor, activo, horizon
+  yo: null,            // { sesion, rol, id, emisor, activo, horizon, invitaciones? }
   beneficiarios: [],
   comercios: [],
   programas: [],
@@ -18,26 +18,36 @@ export const estado = reactive({
   error: null,
 });
 
-export async function cargarSesion() {
-  estado.config = await api.sesion();
+/** Lo que cada perfil puede ver. La API lo hace cumplir; esto evita pedir de mas. */
+const QUE_VE = {
+  empresa: ['beneficiarios', 'comercios', 'programas', 'eventos'],
+  beneficiario: ['beneficiarios', 'comercios', 'programas'],
+  comercio: ['comercios'],
+};
+
+export async function recargar() {
+  const lista = QUE_VE[estado.yo?.rol] ?? [];
+  const resultados = await Promise.all(lista.map((k) => api[k]()));
+  lista.forEach((k, i) => { estado[k] = resultados[i][k]; });
 }
 
-/** Recarga todo lo que la base de datos sabe. */
-export async function recargar() {
-  const [b, c, p, e] = await Promise.all([
-    api.beneficiarios(), api.comercios(), api.programas(), api.eventos(),
-  ]);
-  estado.beneficiarios = b.beneficiarios;
-  estado.comercios = c.comercios;
-  estado.programas = p.programas;
-  estado.eventos = e.eventos;
+export async function refrescarYo() {
+  estado.yo = await api.sesion();
 }
 
 export async function arrancar() {
   estado.cargando = true;
   estado.error = null;
   try {
-    await cargarSesion();
+    // Un enlace de invitacion: #/unirse/<token>
+    const invitacion = /^#\/unirse\/(.+)$/.exec(window.location.hash);
+    if (invitacion) {
+      estado.yo = await api.unirse(decodeURIComponent(invitacion[1]));
+      // Se reemplaza el enlace: si se recarga la pagina, no se vuelve a canjear.
+      window.location.replace(`#/${estado.yo.rol}`);
+    } else {
+      await refrescarYo();
+    }
     await recargar();
   } catch (e) {
     estado.error = e.message;
@@ -59,5 +69,24 @@ export async function accion(fn) {
   }
 }
 
+/** El programa vigente, si hay uno. Solo puede haber uno a la vez. */
+export const programaVigente = () =>
+  [...estado.programas].reverse().find((p) => p.estado === 'vigente') ?? null;
+
 export const soles = (n) => `S/ ${Number(n).toFixed(2)}`;
+
+/**
+ * 2026-10-24 -> 24/10/2026. Se recorta el texto en vez de usar Date: una
+ * fecha a medianoche en UTC, mostrada con la hora de Peru, retrocede un dia.
+ */
+export function fecha(valor) {
+  const [a, m, d] = String(valor ?? '').slice(0, 10).split('-');
+  return d ? `${d}/${m}/${a}` : '';
+}
 export const corto = (h) => `${h.slice(0, 8)}…${h.slice(-6)}`;
+
+/** Acepta "18,50" y "18.50". Devuelve el texto listo para la API, o null. */
+export function montoValido(texto) {
+  const t = String(texto ?? '').trim().replace(',', '.');
+  return /^\d{1,9}(\.\d{1,2})?$/.test(t) && Number(t) > 0 ? t : null;
+}

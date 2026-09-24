@@ -1,37 +1,49 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
 /**
- * Durante el desarrollo, `npm run dev` sirve la interfaz pero NO las
- * funciones de `api/`: esas solo existen en Vercel. Para no obligar a
- * instalar la CLI de Vercel, las peticiones a /api se reenvian al
- * despliegue publico.
+ * En desarrollo, las funciones de `api/` corren dentro del propio servidor de
+ * Vite: el mismo codigo que en Vercel, sin instalar su CLI. Asi `npm run dev`
+ * prueba la API que estas escribiendo, no la que esta desplegada.
  *
- * OJO: eso significa que trabajando en local se toca la base de datos y la
- * red de verdad. Es aceptable en testnet y para una demo, pero conviene
- * saberlo.
+ * OJO: usa la base de datos y la red de verdad (Neon y Stellar Testnet), las
+ * mismas que produccion. Es aceptable en testnet, pero conviene saberlo.
  */
-const API = process.env.API_REMOTA ?? 'https://stellar-rail.vercel.app';
-
-export default defineConfig({
-  plugins: [vue()],
-  server: {
-    proxy: {
-      '/api': {
-        target: API,
-        changeOrigin: true,
-        configure(proxy) {
-          proxy.on('proxyRes', (res) => {
-            // La cookie viene con `Secure` desde Vercel. Algunos navegadores
-            // la rechazan sobre http://localhost, asi que en desarrollo se
-            // quita. En produccion nadie pasa por aqui.
-            const galletas = res.headers['set-cookie'];
-            if (galletas) {
-              res.headers['set-cookie'] = galletas.map((c) => c.replace(/;\s*Secure/gi, ''));
-            }
-          });
-        },
-      },
+function apiLocal() {
+  return {
+    name: 'rail-api-local',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url.startsWith('/api/')) return next();
+        const nombre = req.url.slice('/api/'.length).split(/[/?#]/)[0];
+        // Solo nombres simples: nada de rutas relativas colandose.
+        if (!/^[a-z]+$/.test(nombre)) {
+          res.statusCode = 404;
+          return res.end();
+        }
+        try {
+          // ssrLoadModule recarga el archivo cuando cambia, sin reiniciar.
+          const modulo = await server.ssrLoadModule(`/api/${nombre}.js`);
+          return await modulo.default(req, res);
+        } catch (e) {
+          if (e?.code === 'ERR_MODULE_NOT_FOUND' || /Failed to load url/.test(e?.message)) {
+            res.statusCode = 404;
+            return res.end();
+          }
+          return next(e);
+        }
+      });
     },
-  },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  // Las funciones leen process.env, como en Vercel. Vite no carga .env ahi
+  // por su cuenta: se hace aqui, sin pisar lo que ya este definido.
+  for (const [clave, valor] of Object.entries(loadEnv(mode, process.cwd(), ''))) {
+    if (process.env[clave] === undefined) process.env[clave] = valor;
+  }
+  return {
+    plugins: [vue(), apiLocal()],
+  };
 });
