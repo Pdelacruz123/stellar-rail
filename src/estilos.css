@@ -85,6 +85,7 @@ p { margin: 0 0 12px; }
 
 /* Botones */
 button {
+  min-height: 44px;   /* tamano minimo de un objetivo tactil */
   font: inherit; cursor: pointer; border-radius: 8px; padding: 9px 15px;
   border: 1px solid transparent; background: var(--tinta); color: var(--papel);
   font-weight: 600;
@@ -100,6 +101,7 @@ button.chico { padding: 6px 11px; font-size: .88rem; }
 /* Formularios */
 label { display: block; font-size: .85rem; color: var(--apagado); margin-bottom: 3px; }
 input, select {
+  min-height: 44px;
   font: inherit; color: inherit; width: 100%;
   background: var(--papel); border: 1px solid var(--linea);
   border-radius: 8px; padding: 9px 11px;

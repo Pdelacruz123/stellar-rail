@@ -34,7 +34,9 @@ export default manejar({
     }
 
     const cuenta = derivarCuenta({ sesion, rol: 'beneficiario', id: quien.id });
-    const tx = await r.pagar(cuenta, destino.cuenta_publica, datos.monto);
+    // En Peru se escribe 18,50; la red espera 18.50.
+    const monto = String(datos.monto ?? '').trim().replace(',', '.');
+    const tx = await r.pagar(cuenta, destino.cuenta_publica, monto);
     const evento = await anotar(sesion, 'pagar', tx, r);
 
     return json(res, 200, {

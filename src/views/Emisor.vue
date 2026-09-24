@@ -51,7 +51,10 @@ async function verificar(fila, aprobar) {
 async function crear() {
   trabajando.value = 'crear';
   try {
-    await accion(() => api.crearPrograma({ ...nuevo.value }));
+    await accion(() => api.crearPrograma({
+      ...nuevo.value,
+      monto: String(nuevo.value.monto).trim().replace(',', '.'),
+    }));
     ultima.value = null;
   } finally {
     trabajando.value = '';
@@ -94,7 +97,9 @@ const vigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.saldo),
     <h2>Panel del emisor</h2>
     <p class="apagado pequeno">
       Desde aquí se aprueban beneficiarios, se entregan vales y se vencen
-      programas. La clave está en el README del repositorio.
+      programas. La clave es la contraseña del panel que se configuró en el
+      servidor (<code>ADMIN_PASSWORD</code>). No es una clave de Stellar: la
+      aplicación nunca te pide claves de la red.
     </p>
     <form @submit.prevent="entrar">
       <div class="campo">
@@ -153,7 +158,8 @@ const vigente = computed(() => gasto.value.reduce((s, g) => s + Number(g.saldo),
         <div class="pareja">
           <div class="campo">
             <label for="pm">Monto por trabajador (S/)</label>
-            <input id="pm" v-model="nuevo.monto" type="number" min="1" step="0.5" required>
+            <input id="pm" v-model="nuevo.monto" type="text" inputmode="decimal"
+                   autocomplete="off" required>
           </div>
           <div class="campo">
             <label for="pv">Vence el</label>

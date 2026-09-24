@@ -46,7 +46,8 @@ async function pagarAhora() {
     const r = await accion(() => api.pagar({
       beneficiarioId: yo.value.id,
       codigo: pago.value.codigo.trim(),
-      monto: pago.value.monto,
+      // En Peru se escribe 18,50. La red espera 18.50.
+      monto: String(pago.value.monto).trim().replace(',', '.'),
     }));
     resultado.value = r;
     if (r.pagado) pago.value = { codigo: '', monto: '' };
@@ -150,8 +151,8 @@ async function pagarAhora() {
           </div>
           <div class="campo">
             <label for="mon">Monto (S/)</label>
-            <input id="mon" v-model="pago.monto" type="number" min="0.1" step="0.5"
-                   placeholder="18.50" required>
+            <input id="mon" v-model="pago.monto" type="text" inputmode="decimal"
+                   autocomplete="off" placeholder="18,50" required>
           </div>
         </div>
         <button :disabled="trabajando === 'pago' || yo.estado !== 'verificado'">
