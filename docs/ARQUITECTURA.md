@@ -1,9 +1,9 @@
-# Arquitectura de Rail
+# Arquitectura de StellarRail
 
 **Stellar Odyssey Perú** · Track 03: Real-World Assets & Compliant Rails
 Documento de checkpoint · 22 de septiembre de 2026
 
-Rail entrega vales de alimentación como un activo de Stellar. Las reglas del beneficio —quién puede tenerlo, dónde se puede gastar, cuándo caduca— no viven en nuestro servidor: son propiedades del activo y las hace cumplir la red.
+StellarRail entrega vales de alimentación como un activo de Stellar. Las reglas del beneficio —quién puede tenerlo, dónde se puede gastar, cuándo caduca— no viven en nuestro servidor: son propiedades del activo y las hace cumplir la red.
 
 Este documento describe cómo está construido y por qué. El recorrido del producto está en el [README](../README.md); las transacciones que lo respaldan, en [EVIDENCIAS.md](../EVIDENCIAS.md).
 
@@ -87,7 +87,7 @@ No hay contrato inteligente. Las tres garantías son capacidades del protocolo, 
 
 ## 3. Verificación: de un trámite a una regla de red
 
-El track pide controles de cumplimiento. La respuesta de Rail no es un campo `verificado` en una tabla: **la aprobación ejecuta la autorización en la red.**
+El track pide controles de cumplimiento. La respuesta de StellarRail no es un campo `verificado` en una tabla: **la aprobación ejecuta la autorización en la red.**
 
 1. El beneficiario abre la invitación de su empresa en su celular y escribe su nombre. La API le crea una cuenta y su trustline hacia `ALIM`, y la guarda en `pendiente`.
 2. La trustline **nace sin autorizar**: la cuenta existe y pidió poder recibir el vale, pero todavía no puede. Tener el activo exige dos voluntades, la de la cuenta y la del emisor.
@@ -206,9 +206,10 @@ Seis funciones serverless, una por recurso. Las acciones viajan en el cuerpo de 
 | `POST /api/beneficiarios` | Registrarse con una invitación: crea su cuenta y su trustline, en `pendiente` | Empresa, trabajador |
 | `POST /api/beneficiarios` `{accion:'verificar'}` | Aprueba, y al aprobar **ejecuta `autorizar` en la red**, o rechaza | Empresa |
 | `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro y su código de 6 dígitos | Según el caso |
+| `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: firmado, caduca a los 10 minutos | Tienda |
 | `GET /api/programas` | Programas del espacio, con sus rubros y su vencimiento | Todos |
 | `POST /api/programas` | Crear, `entregar` o `vencer` | Empresa |
-| `POST /api/pagos` | El trabajador paga a un comercio, por QR o código | Trabajador |
+| `POST /api/pagos` | El trabajador paga un cobro con monto (`{cobro}`) o un QR fijo o código (`{codigo, monto}`) | Trabajador |
 | `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
 **Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción serían 11, más la del vencimiento programado: justo en el límite y sin margen, además de once paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 6.
@@ -223,7 +224,7 @@ Toda cuenta de Stellar exige un depósito bloqueado de 1,5 XLM: 1 por la cuenta 
 
 Eso plantea la pregunta que decide la viabilidad: *¿una trabajadora tiene que comprar criptomonedas para cobrar su beneficio de alimentación?*
 
-Rail usa **reservas patrocinadas**: el emisor paga el depósito de cada trabajador y de cada comercio. El saldo mínimo exigido a la beneficiaria es cero, y el emisor recupera lo que puso al terminar el programa. Verificado en testnet:
+StellarRail usa **reservas patrocinadas**: el emisor paga el depósito de cada trabajador y de cada comercio. El saldo mínimo exigido a la beneficiaria es cero, y el emisor recupera lo que puso al terminar el programa. Verificado en testnet:
 
 ```
 Cuenta de la beneficiaria
@@ -245,7 +246,7 @@ Lo verificable no es la custodia: es que las reglas son públicas y las hace cum
 
 Una cuenta de Stellar consume **una sola secuencia por ledger** (~5 s), y el emisor firma casi todo: autorizar, emitir, congelar, anular. Dos peticiones simultáneas producen `tx_bad_seq`.
 
-Rail lo resuelve en tres niveles:
+StellarRail lo resuelve en tres niveles:
 
 1. Los envíos cuyo origen es el emisor se serializan con un *advisory lock* de Postgres. Los pagos de los beneficiarios no: cada uno tiene su propia cuenta y su propia secuencia.
 2. Las operaciones se agrupan: las cuentas de una sesión se crean en una transacción (hasta 25), y vencer congela y anula en una sola (hasta 50 beneficiarios).
@@ -271,7 +272,7 @@ Así el jurado entra sin credenciales y ningún visitante puede estropear la dem
 
 La red sabe quién le paga a quién y cuánto. **No sabe qué se compró**: la canasta solo la ve el comercio. Ningún medio de pago lo resuelve solo; las tarjetas de alimentación actuales restringen por tipo de comercio, y en un supermercado separar la comida del resto depende del cajero.
 
-Rail lo resuelve en capas, y dice con precisión quién garantiza cada una:
+StellarRail lo resuelve en capas, y dice con precisión quién garantiza cada una:
 
 | Qué | Quién lo garantiza |
 |---|---|
@@ -281,6 +282,28 @@ Rail lo resuelve en capas, y dice con precisión quién garantiza cada una:
 | Sancionar a un comercio que declara en falso | **La red**: desafiliarlo le impide volver a cobrar |
 
 El tipo de programa fija los rubros posibles. En la **prestación alimentaria** de la Ley 28051 solo cabe alimentos, porque la ley lo exige, y la empresa no puede cambiarlo. En un **bono o incentivo** la empresa elige.
+
+### El QR, pensado para quien no se maneja bien con el celular
+
+Muchos no saben que la cámara del celular lee códigos QR: quien usa Yape aprendió a escanear *dentro* de Yape. StellarRail hace lo mismo: el trabajador toca **Pagar con QR** y la app abre la cámara. Si no hay cámara o no hay permiso, se ofrece escribir el código de 6 números.
+
+**Cobro con monto.** La tienda escribe cuánto cobra y muestra un QR; el trabajador escanea y **solo confirma**, sin escribir nada. El cobro viaja en el propio enlace, **firmado por el servidor**:
+
+- el cliente no puede cambiar ni el monto ni el rubro: alterarlos rompe la firma;
+- la tienda declara el rubro de **cada venta**, así que una bodega que también vende televisores puede cobrar una tele como electrodomésticos, y esa declaración termina en el memo público;
+- caduca a los 10 minutos y se paga **una sola vez**: el servidor reserva la firma antes de enviar el pago, y la libera si la red lo rechaza.
+
+El vencimiento lo decide solo el servidor. El celular cuenta hacia atrás desde que recibe el cobro, sin comparar relojes: si el de un celular va adelantado, daría por vencido un cobro que todavía vale.
+
+**QR fijo.** Para imprimir y pegar en el mostrador, como los de Yape. El cliente escribe el monto.
+
+**Cómo se generan.** En SVG, nítido a cualquier tamaño, con el margen de cuatro módulos que exige la norma y corrección de errores alta, porque un cartel se ensucia y se raya. Siempre negro sobre blanco, también en modo oscuro. Contienen un enlace web normal, así que también los abre la cámara nativa de cualquier celular.
+
+**Aviso en vivo, también en voz alta.** Cuando le pagan, la tienda lo ve en grande y, si lo activa, el celular lo dice: *"Recibiste 18 soles con 50 céntimos"*. No tiene que mirar la pantalla mientras atiende.
+
+### Entregar no duplica
+
+Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos en "Entregar" no emiten dos veces el vale, y quien se verifica después de una entrega recibe el suyo en la siguiente. "Entregado" cuenta vales emitidos de verdad, cada uno con su hash; no es una estimación a partir de cuántos trabajadores hay verificados.
 
 ### Otras
 
@@ -326,7 +349,7 @@ El tipo de programa fija los rubros posibles. En la **prestación alimentaria** 
 **Pendiente**
 
 - Vencimiento programado con Vercel Cron. El plan gratuito admite una ejecución diaria, suficiente para vencimientos por día; el botón del emisor ya cubre la demo.
-- QR dinámico con el monto ya puesto, para comercios que venden de varios rubros. Hoy el QR es estático: lleva un enlace web que abre la cámara de cualquier celular, y el cliente escribe el monto. Un URI SEP-7, que entienden las billeteras de Stellar, tendría sentido el día que cada usuario tenga la suya.
+- Un URI SEP-7 en el QR, que entienden las billeteras de Stellar, tendrá sentido el día que cada usuario tenga la suya. Hoy el QR lleva un enlace web, que abre la app o la cámara de cualquier celular.
 - Diseño visual definitivo.
 
 Para reproducir el ciclo desde cero, sin configurar nada:

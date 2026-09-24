@@ -2,7 +2,6 @@
 
 **Stellar Odyssey Perú** · Track 03: Real-World Assets & Compliant Rails
 
-> Stellar Rail.
 
 **Ayudamos a las empresas a entregar beneficios con reglas verificables, que el trabajador puede gastar en la bodega de su barrio con un QR, sin depender de una red cerrada de tarjetas.**
 
@@ -31,7 +30,7 @@ Un vale digital emitido como activo en Stellar, con las reglas dentro del activo
 
 1. **Verificación:** el beneficiario y el comercio se registran; el emisor los verifica y, al aprobarlos, los autoriza en la red.
 2. **Entrega:** la empresa asigna saldo a sus trabajadores verificados.
-3. **Pago:** el trabajador escanea el QR de la bodega con la cámara de su celular, escribe el monto y confirma. Si el comercio no está autorizado, **la red rechaza el pago**.
+3. **Pago:** la bodega escribe cuánto cobra y muestra un QR. El trabajador lo escanea desde la app y solo confirma: no escribe nada. Si el comercio no está autorizado, **la red rechaza el pago**.
 4. **Vencimiento:** al vencer el programa, el emisor congela el saldo y lo anula.
 
 Todo queda registrado en un libro público: cualquiera puede comprobar cada paso con un enlace.
@@ -125,7 +124,9 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **API** en funciones serverless de Vercel, con base de datos en Neon que nunca guarda saldos ni claves.
 - **Aplicación web** con tres perfiles: empresa, trabajador y comercio.
 - **Acceso sin contraseñas**: la empresa invita por enlace o QR, y cada persona entra desde su celular.
-- **Pago con la cámara del celular**, con confirmación antes de mover dinero, y **aviso en vivo** al comercio cuando le pagan.
+- **Cobro con QR pensado para quien no se maneja bien con el celular**: la bodega pone el monto, el trabajador escanea desde la app, como en Yape, y solo confirma. El cobro va firmado por el servidor, caduca a los 10 minutos y no se puede pagar dos veces. También hay un QR fijo imprimible como cartel, y un código de 6 números para cuando la cámara falla.
+- **Aviso en vivo** a la bodega cuando le pagan, en pantalla y en voz alta ("Recibiste 18 soles con 50 céntimos").
+- **Entregas sin duplicados**: dos clics en "Entregar" no emiten dos veces el vale.
 - **Rubros por programa**, declarados por el comercio en el memo de cada transacción.
 - **Evidencias 9 a 18**: el ciclo completo ejecutado por la aplicación desplegada.
 
@@ -187,7 +188,7 @@ Abre <https://stellar-rail.vercel.app>. Entras como **la empresa de un espacio n
 2. Regístrate como comercio con un celular y como trabajador con otro.
 3. Vuelve a **Empresa** y aprueba a los dos: cada aprobación es una transacción en la red, con su comprobante. Deja un segundo comercio sin aprobar.
 4. Crea el programa y entrega los vales.
-5. Desde el celular del trabajador, escanea el QR del comercio con la cámara, escribe el monto y confirma. El comercio recibe el aviso sin recargar.
+5. En el celular de la tienda, escribe un monto y toca **Mostrar QR para cobrar**. En el del trabajador, toca **Pagar con QR**, apunta y confirma. La tienda recibe el aviso sin recargar.
 6. Intenta pagar en el comercio que no aprobaste: **lo rechaza la red**.
 7. Vence el programa: el saldo se congela y se anula.
 
@@ -247,7 +248,6 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 1. **Un activo por programa**: cada empresa afilia a sus propios comercios en la cadena y los saldos de distintos programas dejan de mezclarse.
 2. **Contrato Soroban** que haga cumplir en la red los rubros y la vigencia.
 3. KYC con SEP-12.
-4. QR dinámico con el monto ya puesto, para comercios que venden de varios rubros.
 5. Cobertura sin datos móviles: SMS o USSD.
 6. Piloto con una empresa y bodegas de un distrito.
 7. Postulación a Instawards y Stellar Community Fund.
@@ -268,7 +268,8 @@ Licencia MIT (ver `LICENSE`).
 | [`@stellar/stellar-sdk`](https://github.com/stellar/js-stellar-sdk) | Operaciones en la red | Apache-2.0 |
 | [`@neondatabase/serverless`](https://github.com/neondatabase/serverless) | Base de datos | MIT |
 | [`vue`](https://github.com/vuejs/core) | Interfaz | MIT |
-| [`qrcode`](https://github.com/soldair/node-qrcode) | Códigos QR | MIT |
+| [`qrcode`](https://github.com/soldair/node-qrcode) | Generar códigos QR | MIT |
+| [`qr-scanner`](https://github.com/nimiq/qr-scanner) | Leer códigos QR con la cámara | MIT |
 | [`vite`](https://github.com/vitejs/vite) y [`@vitejs/plugin-vue`](https://github.com/vitejs/vite-plugin-vue) | Compilación y servidor de desarrollo | MIT |
 
 No se usaron plantillas de terceros.
