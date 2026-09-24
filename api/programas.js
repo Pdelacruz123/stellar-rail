@@ -44,16 +44,30 @@ export default manejar({
         return json(res, 409, { error: 'Todavía no hay ningún trabajador verificado.' });
       }
 
+      // Solo a quien aun no lo tiene. Se reserva ANTES de emitir: dos clics
+      // seguidos no pueden emitir dos veces.
+      const reservados = await db.reservarEntregas(programa.id, verificados.map((b) => b.id));
+      if (!reservados.length) {
+        return json(res, 409, { error: 'Todos los trabajadores verificados ya recibieron su vale.' });
+      }
+      const pendientes = verificados.filter((b) => reservados.includes(b.id));
+
       const transacciones = [];
       // Una operacion por beneficiario: caben 100 por transaccion.
-      for (const grupo of trozos(verificados, MAX_OPERACIONES)) {
+      for (const grupo of trozos(pendientes, MAX_OPERACIONES)) {
+        const ids = grupo.map((b) => b.id);
         const tx = await r.emitirVarios(
           grupo.map((b) => ({ cuenta: b.cuenta_publica, monto: programa.monto })),
         );
         transacciones.push(await anotar(yo.sesion, 'emitir', tx, r));
-        if (!tx.ok) return json(res, 502, { error: tx.mensaje, transacciones });
+        if (!tx.ok) {
+          // Los de este grupo siguen sin vale: se liberan para reintentar.
+          await db.liberarEntregas(programa.id, ids);
+          return json(res, 502, { error: tx.mensaje, transacciones });
+        }
+        await db.confirmarEntregas(programa.id, ids, tx.hash);
       }
-      return json(res, 200, { entregados: verificados.length, transacciones });
+      return json(res, 200, { entregados: pendientes.length, transacciones });
     }
 
     // --- Vencer: congelar y anular, en una sola transaccion por lote.

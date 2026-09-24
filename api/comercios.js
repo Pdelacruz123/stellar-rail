@@ -6,6 +6,8 @@
  *                                               trabajador, los del espacio
  *   POST { nombre, distrito, telefono, rubro }  registrarse o darlo de alta
  *   POST { accion:'verificar', id, aprobar }    la empresa afilia o rechaza
+ *   POST { accion:'cobrar', monto, rubro }      el comercio genera un QR con
+ *                                               monto, firmado, que caduca
  *
  * El registro pide el nombre y nada mas es obligatorio. Muchas bodegas de
  * Lima no tienen RUC o estan en el RUS: exigirlo dejaria fuera al usuario
@@ -15,6 +17,7 @@ import {
   anotar, cuerpo, exigir, identidad, json, manejar, ponerRol, riel,
 } from '../lib/http.js';
 import { codigoCorto, derivarCuenta } from '../lib/cuentas.js';
+import { crearCobro } from '../lib/cobros.js';
 import { esRubro } from '../lib/rubros.js';
 import * as db from '../lib/db.js';
 
@@ -72,6 +75,23 @@ export default manejar({
       if (!tx.ok) return json(res, 502, { error: tx.mensaje, transaccion: evento });
       const verificado = await db.guardarVerificacion('comercios', fila.id, 'verificado', tx.hash);
       return json(res, 200, { comercio: verificado, transaccion: evento });
+    }
+
+    // --- Cobrar con monto: el QR dinamico. El rubro lo declara la tienda en
+    // cada venta; va firmado, asi que el cliente no puede cambiarlo.
+    if (datos.accion === 'cobrar') {
+      if (!exigir(yo, res, 'comercio', 'empresa')) return undefined;
+      const id = yo.rol === 'comercio' ? yo.id : Number(datos.comercioId);
+      if (id === null) return json(res, 409, { error: 'Primero registra tu negocio.' });
+      const fila = await db.comercio(yo.sesion, id);
+      if (!fila) return json(res, 404, { error: 'Ese comercio no existe.' });
+      const cobro = crearCobro({
+        sesion: yo.sesion,
+        comercioId: fila.id,
+        monto: datos.monto,
+        rubro: datos.rubro ?? fila.rubro,
+      });
+      return json(res, 201, { cobro: { ...cobro, comercio: { id: fila.id, nombre: fila.nombre } } });
     }
 
     if (!exigir(yo, res, 'empresa', 'comercio')) return undefined;
