@@ -211,6 +211,9 @@ async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
             <h2>Cuentas de prueba</h2>
             <p class="apagado pequeno">«Usar» completa el formulario de arriba. Para cambiar de persona, sal y entra con otra.</p>
             <CuentasDePrueba :demo="demo" @usar="usarCuenta" />
+            <button class="enlace" :disabled="Boolean(trabajando)" @click="probarDemo">
+              {{ trabajando === 'demo' ? 'Creando otra empresa de prueba…' : 'Empezar de cero con otra empresa de prueba' }}
+            </button>
           </template>
         </section>
       </main>
