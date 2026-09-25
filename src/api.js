@@ -55,7 +55,7 @@ export const api = {
 
   programas: () => pedir('programas'),
   crearPrograma: (datos) => pedir('programas', 'POST', datos),
-  entregar: (id) => pedir('programas', 'POST', { accion: 'entregar', id }),
+  entregar: (id, beneficiarios) => pedir('programas', 'POST', { accion: 'entregar', id, beneficiarios }),
   vencer: (id) => pedir('programas', 'POST', { accion: 'vencer', id }),
 
   pagar: (datos) => pedir('pagos', 'POST', datos),

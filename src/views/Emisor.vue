@@ -13,7 +13,6 @@ import Qr from '../Qr.vue';
 import TarjetaImpresa from '../TarjetaImpresa.vue';
 import { enlaceRestablecer } from '../enlaces.js';
 
-defineProps({ codigo: { type: String, default: '' }, cobro: { type: String, default: '' } });
 
 const ultima = ref(null);
 const trabajando = ref('');
@@ -276,10 +275,21 @@ const saldoVigente = computed(() => suma(gasto.value));
 const gastado = computed(() => suma(tiendas.value));
 const anulado = computed(() => Math.max(0, entregado.value - gastado.value - saldoVigente.value));
 
-const verificados = computed(() => estado.beneficiarios.filter((b) => b.estado === 'verificado').length);
-const porEntregar = computed(() => (programa.value
-  ? Math.max(0, verificados.value - (programa.value.entregados ?? 0))
-  : 0));
+// --- A quienes entregar ------------------------------------------------------
+// La empresa elige: un bono puede ser solo para algunos. Quien ya recibio el
+// vale de este programa no se puede elegir otra vez.
+const recibieron = computed(() => new Set(programa.value?.recibieron ?? []));
+const aprobados = computed(() => estado.beneficiarios.filter((b) => b.estado === 'verificado'));
+const sinRecibir = computed(() => aprobados.value.filter((b) => !recibieron.value.has(b.id)));
+const elegidos = ref([]);
+// Al cambiar quienes faltan (entrega hecha, alguien aprobado), se marcan todos.
+watch(() => sinRecibir.value.map((b) => b.id).join(','), () => {
+  elegidos.value = sinRecibir.value.map((b) => b.id);
+}, { immediate: true });
+const porEntregar = computed(() => elegidos.value.length);
+function marcarTodos(si) {
+  elegidos.value = si ? sinRecibir.value.map((b) => b.id) : [];
+}
 
 // --- Navegacion del panel ---------------------------------------------------
 
@@ -568,12 +578,29 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               </span>
             </div>
 
+            <fieldset v-if="programa.estado === 'vigente' && aprobados.length" class="campo" style="margin-top:14px">
+              <legend>¿A quiénes entregar? ({{ soles(programa.monto) }} a cada uno)</legend>
+              <label v-if="sinRecibir.length > 1" class="opcion">
+                <input type="checkbox" :checked="elegidos.length === sinRecibir.length"
+                       @change="marcarTodos($event.target.checked)">
+                <b>Todos los que faltan</b>
+              </label>
+              <label v-for="b in aprobados" :key="b.id" class="opcion">
+                <input v-model="elegidos" type="checkbox" :value="b.id" :disabled="recibieron.has(b.id)">
+                {{ b.nombre }}
+                <span v-if="recibieron.has(b.id)" class="etiqueta ok">Ya recibió</span>
+              </label>
+            </fieldset>
+            <p v-else-if="programa.estado === 'vigente'" class="apagado pequeno" style="margin-top:12px">
+              Todavía no hay trabajadores aprobados para entregarles el vale.
+            </p>
+
             <div v-if="programa.estado === 'vigente'" class="acciones" style="margin-top:12px">
               <button class="si" :disabled="trabajando === 'entregar' || !porEntregar"
-                      @click="ejecutar('entregar', () => api.entregar(programa.id))">
+                      @click="ejecutar('entregar', () => api.entregar(programa.id, elegidos))">
                 {{ trabajando === 'entregar' ? 'Entregando…'
                   : porEntregar ? `Entregar vale a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
-                    : 'Todos recibieron su vale' }}
+                    : sinRecibir.length ? 'Elige a quién entregar' : 'Todos recibieron su vale' }}
               </button>
               <button class="suave" :disabled="trabajando === 'vencer'"
                       @click="ejecutar('vencer', () => api.vencer(programa.id))">
@@ -713,7 +740,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
             </div>
             <p v-if="inv.rol === 'beneficiario'" class="apagado pequeno" style="margin:12px 0 0">
               ¿Alguien no tiene smartphone?
-              <button class="enlace-texto" @click="irSeccion('personas'); altaRrhh.abierta = true">Regístralo en Recursos Humanos</button>
+              <button class="enlace-texto" @click="irSeccion('personas'); altaRrhh.abierta = true">Regístralo</button>
               y dale una tarjeta.
             </p>
           </article>

@@ -3,7 +3,8 @@
  *
  *   GET                                               lista (todos los roles)
  *   POST { nombre, monto, venceEl, tipo, rubros }     crea uno (la empresa)
- *   POST { accion:'entregar', id }                    emite a los verificados
+ *   POST { accion:'entregar', id, beneficiarios? }    emite a los verificados
+ *                                                     elegidos (todos si no se dice)
  *   POST { accion:'vencer', id }                      congela y anula
  */
 import {
@@ -24,8 +25,15 @@ export default manejar({
     const yo = await exigirSesion(req, res);
     if (!yo) return undefined;
     // El trabajador tambien lo necesita: ahi ve cuando vence su vale y en
-    // que rubros lo puede usar.
-    json(res, 200, { programas: await db.programasDe(yo.sesion) });
+    // que rubros lo puede usar. De quienes lo recibieron, solo sabe si el.
+    const programas = await db.programasDe(yo.sesion);
+    json(res, 200, {
+      programas: yo.rol === 'empresa' ? programas : programas.map((p) => ({
+        ...p,
+        recibieron: (p.recibieron ?? []).filter((id) => id === yo.id),
+        entregados: undefined,
+      })),
+    });
   },
 
   async POST(req, res) {
@@ -41,9 +49,15 @@ export default manejar({
       if (!programa) return json(res, 404, { error: 'Ese programa no existe.' });
       if (programa.estado !== 'vigente') return json(res, 409, { error: 'El programa ya venció.' });
 
-      const verificados = await db.beneficiariosDe(yo.sesion, 'verificado');
+      let verificados = await db.beneficiariosDe(yo.sesion, 'verificado');
       if (!verificados.length) {
         return json(res, 409, { error: 'Todavía no hay ningún trabajador verificado.' });
+      }
+      // La empresa elige a quienes: un bono puede ser solo para algunos.
+      if (Array.isArray(datos.beneficiarios)) {
+        const elegidos = new Set(datos.beneficiarios.map(Number));
+        verificados = verificados.filter((b) => elegidos.has(b.id));
+        if (!verificados.length) return json(res, 400, { error: 'Elige al menos un trabajador.' });
       }
 
       // Solo a quien aun no lo tiene. Se reserva ANTES de emitir: dos clics
