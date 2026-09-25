@@ -11,8 +11,9 @@
  *   POST { accion:'verificar', id, aprobar }     afiliar o rechazar
  *   POST { accion:'restablecer', id }            enlace para un PIN nuevo
  *   POST { accion:'cobrar', monto }              la tienda genera un QR con
- *                                                monto, firmado, que caduca, y
- *                                                su codigo de 6 numeros
+ *                                                monto, firmado, que caduca
+ *
+ * Cobrar con el codigo que dicta el trabajador va por /api/pagos.
  *
  * El registro pide el nombre y nada mas del negocio. Muchas bodegas de Lima
  * no tienen RUC o estan en el RUS: exigirlo dejaria fuera al usuario que
@@ -22,7 +23,6 @@ import {
   anotar, cuerpo, exigir, exigirSesion, iniciarSesion, json, leerIdentidad,
   leerInvitacion, manejar, riel, tokenDeRestablecer,
 } from '../lib/http.js';
-import { randomInt } from 'node:crypto';
 import { altaConAcceso } from '../lib/altas.js';
 import { crearCobro } from '../lib/cobros.js';
 import { esRubro } from '../lib/rubros.js';
@@ -56,6 +56,8 @@ export default manejar({
           nombre: c.nombre,
           distrito: c.distrito,
           rubro: c.rubro,
+          // Publica: solo sirve para poner nombre a sus pagos en el historial.
+          cuenta_publica: c.cuenta_publica,
           afiliado: c.estado === 'verificado',
         })),
       });
@@ -81,8 +83,8 @@ export default manejar({
     const yo = await leerIdentidad(req);
     if (!yo) return json(res, 401, { error: 'Tu sesión terminó. Vuelve a entrar.', sinSesion: true });
 
-    // --- Cobrar con monto: el QR dinamico. El rubro lo declara la tienda en
-    // cada venta; va firmado, asi que el cliente no puede cambiarlo.
+    // --- Cobrar con monto: el QR dinamico. Monto y rubro van firmados, asi
+    // que el cliente no puede cambiarlos.
     if (datos.accion === 'cobrar') {
       if (!exigir(yo, res, 'comercio')) return undefined;
       const fila = await db.comercio(yo.sesion, yo.id);
@@ -96,14 +98,7 @@ export default manejar({
         monto: datos.monto,
         rubro: fila.rubro,
       });
-      // Codigo de respaldo de 6 numeros, para quien no puede escanear el QR.
-      let codigo = null;
-      for (let intento = 0; intento < 12 && !codigo; intento += 1) {
-        const candidato = String(randomInt(0, 1_000_000)).padStart(6, '0');
-        if (await db.guardarCodigoCobro(yo.sesion, candidato, cobro.token, cobro.expira)) codigo = candidato;
-      }
-      if (!codigo) throw new Error('No se pudo generar el código del cobro.');
-      return json(res, 201, { cobro: { ...cobro, codigo, comercio: { id: fila.id, nombre: fila.nombre } } });
+      return json(res, 201, { cobro: { ...cobro, comercio: { id: fila.id, nombre: fila.nombre } } });
     }
 
     if (!exigir(yo, res, 'empresa')) return undefined;

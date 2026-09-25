@@ -10,7 +10,6 @@ import { RUBROS, TIPOS } from '../../lib/rubros.js';
 import { REGLA_PIN, pinValido, problemaDelPin } from '../../lib/reglas.js';
 import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
-import TarjetaImpresa from '../TarjetaImpresa.vue';
 import { enlaceRestablecer } from '../enlaces.js';
 
 
@@ -82,16 +81,15 @@ async function verificar(fila, aprobar) {
   }
 }
 
-// --- Personas: tarjeta, PIN nuevo, baja --------------------------------------
+// --- Personas: PIN nuevo, baja ------------------------------------------------
 
-const hoja = ref(null);   // { tipo:'pin', nombre, enlace } | { tipo:'tarjeta', nombre, numero }
+const hoja = ref(null);   // { nombre, enlace, whatsapp }: el enlace de PIN nuevo
 const confirmarBaja = ref(null);
 
 /**
- * Registrar a alguien en Recursos Humanos: para quien no puede abrir la
- * invitacion, por ejemplo porque no tiene smartphone. La persona escribe su
- * PIN en el equipo de la empresa; nadie mas lo conoce. Queda pendiente, como
- * cualquier registro, y despues se le puede dar su tarjeta.
+ * Registrar a alguien en Recursos Humanos, en persona, en vez de mandarle la
+ * invitacion. La persona escribe su PIN en el equipo de la empresa; nadie
+ * mas lo conoce. Queda pendiente, como cualquier registro.
  */
 const altaRrhh = ref({ abierta: false, nombre: '', celular: '', pin: '', pin2: '' });
 const avisoAlta = ref('');
@@ -115,26 +113,6 @@ async function registrarTrabajador() {
   }
 }
 
-async function darTarjeta(b) {
-  trabajando.value = `tarjeta-${b.id}`;
-  try {
-    const r = await accion(() => api.darTarjeta(b.id));
-    hoja.value = { tipo: 'tarjeta', nombre: r.nombre, numero: r.tarjeta };
-  } finally {
-    trabajando.value = '';
-  }
-}
-
-async function anularTarjeta(b) {
-  trabajando.value = `anular-${b.id}`;
-  try {
-    await accion(() => api.anularTarjeta(b.id));
-    if (hoja.value?.tipo === 'tarjeta' && hoja.value.numero === b.tarjeta) hoja.value = null;
-  } finally {
-    trabajando.value = '';
-  }
-}
-
 /** Sin SMS: la empresa le pasa el enlace por WhatsApp o con un QR en RR. HH. */
 async function nuevoPin(tabla, fila) {
   trabajando.value = `pin-${tabla}-${fila.id}`;
@@ -142,7 +120,6 @@ async function nuevoPin(tabla, fila) {
     const r = await accion(() => api.nuevoPin(tabla, fila.id));
     const enlace = enlaceRestablecer(r.token);
     hoja.value = {
-      tipo: 'pin',
       nombre: r.nombre,
       enlace,
       whatsapp: `https://wa.me/?text=${encodeURIComponent(`Hola, ${r.nombre}. Con este enlace eliges tu PIN nuevo de StellarRail. Sirve una sola vez, durante 24 horas: ${enlace}`)}`,
@@ -152,12 +129,14 @@ async function nuevoPin(tabla, fila) {
   }
 }
 
-/** Congela y anula su saldo en una sola transaccion, como al vencer. */
+/**
+ * Ya no recibe vales. Lo que tiene sigue siendo suyo hasta que el programa
+ * venza, como en cualquier tarjeta de beneficios: no se toca la red.
+ */
 async function darDeBaja(b) {
   trabajando.value = `baja-${b.id}`;
   try {
-    const r = await accion(() => api.darDeBaja(b.id));
-    ultima.value = r.transaccion ?? null;
+    await accion(() => api.darDeBaja(b.id));
     confirmarBaja.value = null;
     await cargarGasto();
   } finally {
@@ -174,7 +153,6 @@ async function copiarTexto(texto) {
     estado.error = 'No se pudo copiar. Mantén presionado el enlace para copiarlo.';
   }
 }
-const imprimir = () => window.print();
 
 const ESTADOS = {
   pendiente: ['espera', 'Pendiente'],
@@ -185,23 +163,37 @@ const ESTADOS = {
 
 // --- Programa ---------------------------------------------------------------
 
+const hoyLima = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+const anio = hoyLima.slice(0, 4);
+// La prestacion alimentaria se recarga cada mes: por defecto, hasta fin de
+// ano. Un bono se entrega una vez: por defecto, un mes para usarlo.
 const en30dias = () => {
   const d = new Date();
   d.setDate(d.getDate() + 30);
   return d.toISOString().slice(0, 10);
 };
+const PREDETERMINADO = {
+  alimentaria: () => ({ nombre: `Vale de alimentos ${anio}`, venceEl: `${anio}-12-31` }),
+  bono: () => ({ nombre: 'Bono de productividad', venceEl: en30dias() }),
+};
 const nuevo = ref({
-  nombre: `Vale de alimentos · ${new Date().toLocaleDateString('es-PE', { month: 'long' }).toLowerCase()}`,
+  ...PREDETERMINADO.alimentaria(),
   monto: '50',
-  venceEl: en30dias(),
   tipo: 'alimentaria',
   rubros: ['alimentos'],
 });
-const hoyLima = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
 const rubrosFijos = computed(() => TIPOS[nuevo.value.tipo].fijo);
-watch(() => nuevo.value.tipo, (tipo) => {
+watch(() => nuevo.value.tipo, (tipo, antes) => {
   if (TIPOS[tipo].fijo) nuevo.value.rubros = [...TIPOS[tipo].rubros];
+  // Si la empresa no cambio el nombre ni la fecha, se ajustan al tipo.
+  const previo = PREDETERMINADO[antes]?.();
+  if (previo && nuevo.value.nombre === previo.nombre) nuevo.value.nombre = PREDETERMINADO[tipo]().nombre;
+  if (previo && nuevo.value.venceEl === previo.venceEl) nuevo.value.venceEl = PREDETERMINADO[tipo]().venceEl;
 });
+
+// El mes de las recargas de la prestacion alimentaria, en palabras.
+const mes = new Date().toLocaleDateString('es-PE', { month: 'long', timeZone: 'America/Lima' });
+const recargable = computed(() => Boolean(TIPOS[programa.value?.tipo]?.recargable));
 
 const programa = computed(() => estado.programas.at(-1) ?? null);
 const vigente = computed(() => programaVigente());
@@ -228,8 +220,13 @@ async function ejecutar(nombre, fn) {
   try {
     const r = await accion(fn);
     ultima.value = r.transacciones?.at(-1) ?? null;
+    const quienes = `${r.entregados} ${r.entregados === 1 ? 'trabajador' : 'trabajadores'}`;
     if (nombre === 'entregar') {
-      hecho.value = `Vale entregado a ${r.entregados} ${r.entregados === 1 ? 'trabajador' : 'trabajadores'}.`;
+      hecho.value = r.periodo ? `Recarga de ${mes} entregada a ${quienes}.` : `Vale entregado a ${quienes}.`;
+    }
+    if (nombre === 'vencer') {
+      hecho.value = `Programa vencido. Quedaron ${soles(r.sinUsar)} sin usar: se anularon en la red y `
+        + 'su respaldo en soles deja de estar comprometido.';
     }
     await cargarGasto();
   } finally {
@@ -251,7 +248,10 @@ async function cargarGasto() {
   });
   try {
     [gasto.value, tiendas.value] = await Promise.all([
-      Promise.all(estado.beneficiarios.filter((b) => b.estado === 'verificado').map(leer)),
+      // Quien se dio de baja conserva su saldo hasta el vencimiento: tambien cuenta.
+      Promise.all(estado.beneficiarios
+        .filter((b) => b.estado === 'verificado' || (b.estado === 'baja' && b.hash_verificacion))
+        .map(leer)),
       Promise.all(estado.comercios.filter((c) => c.estado === 'verificado').map(leer)),
     ]);
     errorGasto.value = '';
@@ -277,7 +277,8 @@ const anulado = computed(() => Math.max(0, entregado.value - gastado.value - sal
 
 // --- A quienes entregar ------------------------------------------------------
 // La empresa elige: un bono puede ser solo para algunos. Quien ya recibio el
-// vale de este programa no se puede elegir otra vez.
+// vale de este programa (en la prestacion alimentaria, la recarga de este
+// mes) no se puede elegir otra vez.
 const recibieron = computed(() => new Set(programa.value?.recibieron ?? []));
 const aprobados = computed(() => estado.beneficiarios.filter((b) => b.estado === 'verificado'));
 const sinRecibir = computed(() => aprobados.value.filter((b) => !recibieron.value.has(b.id)));
@@ -530,6 +531,11 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               <label v-for="(t, clave) in TIPOS" :key="clave" class="opcion">
                 <input v-model="nuevo.tipo" type="radio" name="tipo" :value="clave"> {{ t.nombre }}
               </label>
+              <p class="apagado pequeno" style="margin:6px 0 0">
+                {{ TIPOS[nuevo.tipo].recargable
+                  ? 'Se recarga cada mes. Lo que el trabajador no usa se acumula para el mes siguiente.'
+                  : 'Se entrega una sola vez.' }}
+              </p>
             </fieldset>
             <fieldset class="campo">
               <legend>Dónde se puede gastar</legend>
@@ -549,14 +555,18 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
             </div>
             <div class="pareja">
               <div class="campo">
-                <label for="pm">Monto por trabajador (S/)</label>
+                <label for="pm">{{ TIPOS[nuevo.tipo].recargable ? 'Monto mensual por trabajador (S/)' : 'Monto por trabajador (S/)' }}</label>
                 <input id="pm" v-model="nuevo.monto" type="text" inputmode="decimal" autocomplete="off" required>
               </div>
               <div class="campo">
-                <label for="pv">Vence el</label>
+                <label for="pv">Se puede usar hasta el</label>
                 <input id="pv" v-model="nuevo.venceEl" type="date" :min="hoyLima" required>
               </div>
             </div>
+            <p class="apagado pequeno">
+              Lo que no se use hasta esa fecha no se pierde para la empresa: al vencer, ese saldo
+              se anula en la red y su respaldo en soles deja de estar comprometido.
+            </p>
             <button class="si" :disabled="trabajando === 'crear' || !nuevo.rubros.length">Crear programa</button>
           </form>
 
@@ -566,8 +576,8 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
                 <div class="nombre">{{ programa.nombre }}</div>
                 <div class="apagado pequeno">
                   {{ TIPOS[programa.tipo]?.nombre ?? programa.tipo }} ·
-                  {{ soles(programa.monto) }} por trabajador ·
-                  vence el {{ fecha(programa.vence_el) }}
+                  {{ soles(programa.monto) }} por trabajador{{ recargable ? ' al mes' : '' }} ·
+                  se puede usar hasta el {{ fecha(programa.vence_el) }}
                 </div>
                 <div class="apagado pequeno">
                   Rubros: {{ (programa.rubros ?? []).map((r) => RUBROS[r] ?? r).join(', ') }}
@@ -579,7 +589,10 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
             </div>
 
             <fieldset v-if="programa.estado === 'vigente' && aprobados.length" class="campo" style="margin-top:14px">
-              <legend>¿A quiénes entregar? ({{ soles(programa.monto) }} a cada uno)</legend>
+              <legend>
+                {{ recargable ? `¿A quiénes entregar la recarga de ${mes}?` : '¿A quiénes entregar?' }}
+                ({{ soles(programa.monto) }} a cada uno)
+              </legend>
               <label v-if="sinRecibir.length > 1" class="opcion">
                 <input type="checkbox" :checked="elegidos.length === sinRecibir.length"
                        @change="marcarTodos($event.target.checked)">
@@ -588,7 +601,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               <label v-for="b in aprobados" :key="b.id" class="opcion">
                 <input v-model="elegidos" type="checkbox" :value="b.id" :disabled="recibieron.has(b.id)">
                 {{ b.nombre }}
-                <span v-if="recibieron.has(b.id)" class="etiqueta ok">Ya recibió</span>
+                <span v-if="recibieron.has(b.id)" class="etiqueta ok">{{ recargable ? `Ya recibió la de ${mes}` : 'Ya recibió' }}</span>
               </label>
             </fieldset>
             <p v-else-if="programa.estado === 'vigente'" class="apagado pequeno" style="margin-top:12px">
@@ -599,8 +612,9 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               <button class="si" :disabled="trabajando === 'entregar' || !porEntregar"
                       @click="ejecutar('entregar', () => api.entregar(programa.id, elegidos))">
                 {{ trabajando === 'entregar' ? 'Entregando…'
-                  : porEntregar ? `Entregar vale a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
-                    : sinRecibir.length ? 'Elige a quién entregar' : 'Todos recibieron su vale' }}
+                  : porEntregar ? `${recargable ? 'Entregar recarga' : 'Entregar vale'} a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
+                    : sinRecibir.length ? 'Elige a quién entregar'
+                      : recargable ? `Todos recibieron la recarga de ${mes}` : 'Todos recibieron su vale' }}
               </button>
               <button class="suave" :disabled="trabajando === 'vencer'"
                       @click="ejecutar('vencer', () => api.vencer(programa.id))">
@@ -608,8 +622,11 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               </button>
             </div>
 
+            <p v-if="programa.estado === 'vigente'" class="apagado pequeno" style="margin-top:10px">
+              Al vencer, lo que nadie usó se anula en la red: la empresa recupera ese respaldo en soles.
+            </p>
             <p v-if="hecho" class="aviso ok" role="status">{{ hecho }}</p>
-            <p v-if="programa.estado === 'vencido'" class="aviso ok">
+            <p v-else-if="programa.estado === 'vencido'" class="aviso ok">
               El saldo no usado se anuló en la red: deja de existir, y el respaldo
               en soles de la empresa deja de estar comprometido.
             </p>
@@ -620,11 +637,11 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
 
       <!-- ================= PERSONAS ================= -->
       <template v-else-if="seccion === 'personas'">
-        <div class="emp-titulo"><div><h1>Trabajadores</h1><p>Tarjetas, PIN nuevo y bajas.</p></div></div>
+        <div class="emp-titulo"><div><h1>Trabajadores</h1><p>Registro en persona, PIN nuevo y bajas.</p></div></div>
         <section class="tarjeta">
           <div class="fila" style="border:none;padding-top:0">
             <p class="apagado pequeno" style="margin:0">
-              ¿Alguien no puede abrir la invitación, por ejemplo porque no tiene smartphone? Regístralo aquí.
+              ¿Prefieres registrar a alguien aquí, en Recursos Humanos? Elige su PIN en este equipo.
             </p>
             <button v-if="!altaRrhh.abierta" class="suave chico" @click="altaRrhh.abierta = true">Registrar trabajador</button>
           </div>
@@ -636,7 +653,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
                 <input id="rt-nombre" v-model="altaRrhh.nombre" autocomplete="off" required>
               </div>
               <div class="campo">
-                <label for="rt-cel">Celular (con él entra, si algún día tiene smartphone)</label>
+                <label for="rt-cel">Celular (con él entra a StellarRail)</label>
                 <input id="rt-cel" v-model="altaRrhh.celular" type="tel" inputmode="numeric" autocomplete="off" required>
               </div>
             </div>
@@ -657,7 +674,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               <button class="si" :disabled="trabajando === 'alta' || !altaLista">{{ trabajando === 'alta' ? 'Registrando…' : 'Registrar' }}</button>
               <button type="button" class="suave" @click="altaRrhh.abierta = false">Cancelar</button>
             </div>
-            <p class="apagado pequeno" style="margin-top:10px">Queda por aprobar en «Inicio». Después le das su tarjeta desde esta lista.</p>
+            <p class="apagado pequeno" style="margin-top:10px">Queda por aprobar en «Inicio».</p>
           </form>
           <p v-if="!estado.beneficiarios.length" class="apagado">Todavía nadie se registró. Invítalos desde «Invitar».</p>
           <div v-for="b in estado.beneficiarios" :key="`b-${b.id}`" class="fila">
@@ -667,23 +684,18 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
                 <div class="nombre">{{ b.nombre }}</div>
                 <div class="apagado pequeno">
                   <template v-if="b.celular">Celular {{ b.celular }}</template>
-                  <template v-if="b.tarjeta"> · Tarjeta {{ b.tarjeta }}</template>
                 </div>
                 <span :class="['etiqueta', ESTADOS[b.estado]?.[0]]">{{ ESTADOS[b.estado]?.[1] ?? b.estado }}</span>
               </div>
             </div>
             <div v-if="b.estado !== 'baja'" class="acciones">
-              <button v-if="b.estado !== 'rechazado'" class="suave chico" :disabled="Boolean(trabajando)" @click="darTarjeta(b)">
-                <Icono nombre="tarjeta" :tamano="18" /> {{ b.tarjeta ? 'Nueva tarjeta' : 'Dar tarjeta' }}
-              </button>
-              <button v-if="b.tarjeta" class="suave chico" :disabled="Boolean(trabajando)" @click="anularTarjeta(b)">Anular tarjeta</button>
               <button v-if="b.celular" class="suave chico" :disabled="Boolean(trabajando)" @click="nuevoPin('beneficiarios', b)">Nuevo PIN</button>
               <button class="no chico" :disabled="Boolean(trabajando)" @click="confirmarBaja = b">Dar de baja</button>
             </div>
             <div v-if="confirmarBaja?.id === b.id" class="aviso no" role="alertdialog" style="flex-basis:100%">
               <strong>¿Dar de baja a {{ b.nombre }}?</strong>
-              Su saldo se congela y se anula en una sola operación, y su tarjeta
-              deja de servir. No se puede deshacer.
+              Ya no recibirá vales nuevos. Lo que tiene sigue siendo suyo y lo puede
+              usar hasta que el programa venza, como con cualquier tarjeta de beneficios.
               <div class="acciones" style="margin-top:8px">
                 <button class="no chico" :disabled="trabajando === `baja-${b.id}`" @click="darDeBaja(b)">
                   {{ trabajando === `baja-${b.id}` ? 'Dando de baja…' : 'Sí, dar de baja' }}
@@ -739,9 +751,8 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               <button class="suave" @click="copiar(inv)">{{ copiado === inv.rol ? 'Copiado' : 'Copiar enlace' }}</button>
             </div>
             <p v-if="inv.rol === 'beneficiario'" class="apagado pequeno" style="margin:12px 0 0">
-              ¿Alguien no tiene smartphone?
-              <button class="enlace-texto" @click="irSeccion('personas'); altaRrhh.abierta = true">Regístralo</button>
-              y dale una tarjeta.
+              ¿Prefieres registrarlo tú, en persona?
+              <button class="enlace-texto" @click="irSeccion('personas'); altaRrhh.abierta = true">Regístralo aquí</button>.
             </p>
           </article>
         </div>
@@ -768,21 +779,8 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
         </section>
       </template>
 
-      <!-- Lo que se le entrega a la persona: su tarjeta o su enlace de PIN nuevo. -->
+      <!-- El enlace de PIN nuevo, para entregarselo a la persona. -->
       <section v-if="hoja" class="tarjeta hoja">
-        <template v-if="hoja.tipo === 'tarjeta'">
-          <h2>Tarjeta de {{ hoja.nombre }}</h2>
-          <p class="apagado pequeno">
-            Imprímela y entrégasela. Paga en las bodegas afiliadas marcando su PIN,
-            hasta S/ 100 por día. La anterior, si tenía, ya no sirve.
-          </p>
-          <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="empresa" />
-          <div class="acciones" style="margin-top:10px">
-            <button class="si" @click="imprimir"><Icono nombre="imprimir" :tamano="18" /> Imprimir tarjeta</button>
-            <button class="suave" @click="hoja = null">Cerrar</button>
-          </div>
-        </template>
-        <template v-else>
           <h2>PIN nuevo para {{ hoja.nombre }}</h2>
           <p class="apagado pequeno">
             Envíale este enlace o que escanee el código. Sirve una sola vez,
@@ -794,12 +792,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
             <button class="suave" @click="copiarTexto(hoja.enlace)">{{ copiado === 'hoja' ? 'Copiado' : 'Copiar enlace' }}</button>
             <button class="suave" @click="hoja = null">Cerrar</button>
           </div>
-        </template>
       </section>
-
-      <div v-if="hoja?.tipo === 'tarjeta'" class="cartel" aria-hidden="true">
-        <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="empresa" />
-      </div>
 
       <p style="margin-top:20px">
         <button class="enlace" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>

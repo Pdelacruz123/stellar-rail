@@ -5,7 +5,7 @@
  * pago que la gente ya usa. La base es neutra (blanco hueso, blanco, casi
  * negro) y el oro de la marca aparece poco:
  *  - en el logo;
- *  - en la accion principal de cada pantalla (Pagar con QR, Mostrar QR para
+ *  - en la accion principal de cada pantalla (Escanear QR, Mostrar QR para
  *    cobrar, Entrar, Probar la demostracion), siempre con texto negro.
  * Las demas acciones son neutras. Asi la accion principal se encuentra sin
  * buscar.
@@ -262,18 +262,69 @@ input[type="tel"].numero-grande { letter-spacing: .04em; font-size: 1.7em; }
 
 .saludo { font-size: 1.4em; font-weight: 700; letter-spacing: -.02em; margin-bottom: 14px; }
 
-/* El vale: una tarjeta oscura, como una tarjeta de verdad, con el logo en
-   su esquina y una linea dorada abajo. Texto claro fijo. */
+/* El vale: una tarjeta oscura con un brillo dorado, como una tarjeta de
+   verdad, con el logo en su esquina y una linea dorada abajo. Texto claro
+   fijo, tambien en modo oscuro. */
 .vale {
-  position: relative; display: grid; gap: 2px; margin: 0 0 16px; padding: 22px 22px 20px;
-  border-radius: 20px; background: #161616; color: #F7F6F2;
-  border-bottom: 4px solid #FDDA24;
+  position: relative; display: grid; gap: 2px; margin: 0 0 20px; padding: 22px 22px 24px;
+  border-radius: 22px; color: #F7F6F2; overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(253, 218, 36, .26) 0%, rgba(253, 218, 36, 0) 55%),
+    linear-gradient(135deg, #202020 0%, #0E0E0E 100%);
+  box-shadow: 0 16px 32px -20px rgba(0, 0, 0, .6);
 }
-.vale span { color: #B5B4AF; font-size: .9em; }
-.vale span:first-child { color: #F7F6F2; font-weight: 600; }
-.vale b { font-size: 2.6em; letter-spacing: -.04em; line-height: 1.05; margin: 6px 0 2px; }
-.vale.congelado { background: #3A3A38; border-bottom-color: #7A7A76; }
-.vale-logo { position: absolute; top: 18px; right: 18px; width: 30px; height: 30px; border-radius: 8px; }
+.vale::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: #FDDA24; }
+.vale-arriba { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.vale-programa { font-weight: 600; }
+.vale-logo { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+.vale-etiqueta { color: #B5B4AF; font-size: .85em; }
+.vale-saldo { font-size: 2.9em; letter-spacing: -.04em; line-height: 1.05; margin: 2px 0 12px; }
+.vale-abajo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: #D9D8D3; font-size: .86em; }
+.vale-rubro { display: inline-block; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, .12); }
+.vale-rubro::first-letter { text-transform: uppercase; }
+.vale-nota { margin-top: 10px; color: #B5B4AF; font-size: .8em; }
+.vale.congelado { background: linear-gradient(135deg, #3E3E3B 0%, #2A2A28 100%); }
+.vale.congelado::after { background: #7A7A76; }
+
+/* Como pagar: las dos formas, grandes, con icono y una linea que explica. */
+.seccion-titulo { font-size: 1em; font-weight: 700; margin: 0 0 10px; }
+.formas { display: grid; gap: 10px; margin-bottom: 6px; }
+@media (min-width: 560px) { .formas { grid-template-columns: 1fr 1fr; } }
+button.forma {
+  width: 100%; min-height: 88px; padding: 14px 16px; gap: 14px;
+  justify-content: flex-start; text-align: left; border-radius: 18px; box-shadow: var(--sombra);
+}
+button.forma.principal-forma { background: var(--oro); color: var(--sobre-oro); border-color: var(--oro); }
+button.forma.principal-forma:hover:not(:disabled) { background: var(--oro-hover); }
+.forma-icono { width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; flex: none; background: var(--superficie-2); }
+.principal-forma .forma-icono { background: rgba(20, 20, 20, .1); }
+.forma-texto { display: grid; gap: 3px; }
+.forma-texto b { font-size: 1.05em; }
+.forma-texto span { font-size: .8em; font-weight: 500; color: var(--texto-2); }
+.principal-forma .forma-texto span { color: #3A3A36; }
+
+/* Donde usar el vale y los movimientos: listas con avatar e icono. */
+.lista-tiendas, .movimientos { list-style: none; margin: 0; padding: 0; }
+.lista-tiendas li, .movimientos li {
+  display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--linea);
+}
+.lista-tiendas li:last-child, .movimientos li:last-child { border-bottom: none; }
+.lista-tiendas-texto, .mov-texto { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.av.av-tienda { width: 42px; height: 42px; border-radius: 12px; font-size: .8rem; background: var(--aviso-fondo); color: var(--aviso); }
+.mov-icono { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.mov-icono.entra { background: var(--exito-fondo); color: var(--exito); }
+.mov-icono.sale { background: var(--superficie-2); color: var(--texto); }
+.mov-lado { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.mov-lado a { color: var(--texto-2); }
+.mov-monto { white-space: nowrap; }
+.mov-monto.entra { color: var(--exito); }
+
+/* El codigo de pago del trabajador: grande, para dictarlo sin equivocarse. */
+.codigo-pago {
+  max-width: 340px; margin: 10px auto 12px; padding: 16px 18px; border-radius: 18px;
+  font-size: 3em; font-weight: 800; letter-spacing: .12em; font-variant-numeric: tabular-nums;
+  background: var(--superficie-2); border: 2px dashed var(--linea);
+}
 
 .destino { display: flex; align-items: center; gap: 8px; font-size: 1.15em; font-weight: 600; margin-bottom: 6px; }
 .confirmacion { text-align: center; }
@@ -323,16 +374,9 @@ summary {
   aspect-ratio: 1; border-radius: 20px; overflow: hidden; background: #000;
 }
 .visor video { width: 100%; height: 100%; object-fit: cover; display: block; }
-label.boton.subir {
-  display: flex; align-items: center; justify-content: center; gap: .5em;
-  padding: 10px 16px; border: 1px solid var(--linea); background: var(--superficie); color: var(--texto);
-  font-size: 1em; font-weight: 600; cursor: pointer;
-}
-label.boton.subir:focus-within { outline: 3px solid var(--foco); outline-offset: 3px; }
-.pegar { margin-top: 10px; text-align: left; }
-
 /* ---------- Tienda ---------- */
 
+/* Pestanas de la portada: entrar como trabajador, tienda o empresa. */
 .modos {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
   margin-bottom: 16px; border-radius: 14px; background: var(--superficie-2);
@@ -348,8 +392,9 @@ label.boton.subir:focus-within { outline: 3px solid var(--foco); outline-offset:
 
 .cobro-activo { text-align: center; }
 .cobro-activo .qr { margin: 12px auto; }
-.codigo { font-size: 2.5em; font-weight: 700; letter-spacing: .08em; margin: 0 0 8px; }
-.esperando { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--texto-2); }
+.tienda-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+input.codigo-campo { text-align: center; letter-spacing: .2em; font-variant-numeric: tabular-nums; }
+.esperando { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; color: var(--texto-2); font-size: .92em; }
 .punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--exito); animation: latir 1.4s ease-in-out infinite; }
 @keyframes latir { 50% { opacity: .25; } }
 
@@ -380,21 +425,6 @@ button.interruptor[aria-pressed="true"] .estado-interruptor { background: var(--
 .prueba { font-size: .82em; margin-top: 8px; }
 .prueba code { overflow-wrap: anywhere; }
 
-/* ---------- Tarjeta impresa (siempre clara, como el papel) ---------- */
-
-.tarjeta-impresa {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  max-width: 380px; margin: 8px auto; padding: 16px;
-  border-radius: 14px; background: #fff; color: #141414; border: 1px solid #E3E1DB;
-  border-top: 5px solid #FDDA24; text-align: left;
-}
-.tarjeta-impresa p { margin: 0; }
-.tarjeta-impresa-marca { font-size: .72em; font-weight: 700; color: #5E5E5A; text-transform: uppercase; letter-spacing: .06em; }
-.tarjeta-impresa-nombre { font-size: 1.15em; font-weight: 700; letter-spacing: -.02em; margin-top: 4px !important; }
-.tarjeta-impresa-empresa { font-size: .8em; color: #5E5E5A; }
-.tarjeta-impresa-numero { font-family: ui-monospace, Consolas, monospace; font-size: 1.05em; font-weight: 700; margin-top: 6px !important; }
-.tarjeta-impresa-nota { font-size: .72em; color: #5E5E5A; margin-top: 6px !important; }
-.tarjeta-impresa .qr { margin: 0; flex: none; }
 .hoja .qr { margin: 8px 0; }
 
 /* ---------- Cuentas de prueba ---------- */
@@ -504,30 +534,6 @@ button.emp-pestana[aria-current="page"] { color: var(--texto); font-weight: 700;
 
 @media (prefers-reduced-motion: reduce) {
   .girando, .punto { animation: none; }
-}
-
-/* ---------- Carteles para imprimir ---------- */
-
-.cartel { display: none; }
-
-@media print {
-  @page { size: A4; margin: 1.2cm; }
-  body { background: #fff; color: #000; }
-  /* Se quita todo lo demas del flujo, no solo se esconde: asi no quedan
-     paginas en blanco ni el cartel repetido. */
-  .envoltura { max-width: none; padding: 0; }
-  .envoltura > :not(.cartel), .app-barra, .emp-barra { display: none !important; }
-  .emp-contenido { padding: 0; }
-  .emp-contenido > :not(.cartel) { display: none !important; }
-  .cartel { display: block; text-align: center; color: #000; }
-  .cartel .qr { width: 12cm !important; height: 12cm !important; margin: .4cm auto; }
-  .cartel-marca { font-size: 14pt; font-weight: 700; margin: 0; }
-  .cartel-titulo { font-size: 30pt; font-weight: 800; margin: .2cm 0 0; }
-  .cartel-tienda { font-size: 20pt; margin: 0; }
-  .cartel-codigo { font-size: 34pt; font-weight: 800; letter-spacing: .1em; margin: 0; }
-  .cartel-pasos { display: inline-block; text-align: left; font-size: 16pt; margin: .4cm auto 0; padding-left: 1.2em; }
-  .cartel .tarjeta-impresa { max-width: 9cm; border-color: #000; }
-  .cartel .tarjeta-impresa .qr { width: 3cm !important; height: 3cm !important; margin: 0; }
 }
 
 /* Pantalla angosta: las pestanas sin icono, para que quepan todas. */

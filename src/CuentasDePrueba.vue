@@ -44,7 +44,6 @@ const PERFIL = { beneficiario: 'trabajador', comercio: 'tienda' };
       <dl class="datos">
         <dt>Celular</dt><dd><code>{{ celular(p.celular) }}</code></dd>
         <dt>PIN</dt><dd><code>{{ p.pin }}</code></dd>
-        <template v-if="p.tarjeta"><dt>Tarjeta</dt><dd><code>{{ p.tarjeta }}</code></dd></template>
       </dl>
     </div>
   </div>

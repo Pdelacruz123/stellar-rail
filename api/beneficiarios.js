@@ -2,15 +2,14 @@
  * /api/beneficiarios
  *
  *   GET                                         la empresa ve a todos, con su
- *                                               celular y su tarjeta; un
- *                                               trabajador, solo a si mismo
+ *                                               celular; un trabajador, solo
+ *                                               a si mismo
  *   POST { invitacion, nombre, celular, pin }   registrarse con una invitacion
  *   POST { nombre, celular, pin }               la empresa lo da de alta en RR. HH.
  *   POST { accion:'verificar', id, aprobar }    aprobar o rechazar
- *   POST { accion:'baja', id }                  congelar y anular su saldo
+ *   POST { accion:'baja', id }                  ya no recibe vales; conserva lo
+ *                                               que tiene hasta que venza
  *   POST { accion:'restablecer', id }           enlace para que ponga un PIN nuevo
- *   POST { accion:'tarjeta', id }               imprimirle una tarjeta (anula la anterior)
- *   POST { accion:'anularTarjeta', id }         anular su tarjeta
  *
  * Las acciones van en el cuerpo y no en la ruta porque Vercel convierte cada
  * archivo de `api/` en una funcion, y el plan gratuito admite 12.
@@ -20,7 +19,6 @@ import {
   leerInvitacion, manejar, riel, tokenDeRestablecer,
 } from '../lib/http.js';
 import { altaConAcceso } from '../lib/altas.js';
-import { numeroDeTarjeta } from '../lib/credenciales.js';
 import * as db from '../lib/db.js';
 
 /** Solo lo que un trabajador necesita saber de si mismo. */
@@ -95,22 +93,12 @@ export default manejar({
 
       case 'baja': {
         if (fila.estado === 'baja') return json(res, 409, { error: 'Ya estaba dado de baja.' });
-        let evento = null;
-        if (fila.estado === 'verificado') {
-          // Congelar y anular en UNA transaccion, como al vencer. El saldo se
-          // lee de la red: si cambia entre la lectura y el envio, la
-          // transaccion falla entera y no deja nada a medias.
-          const { saldo } = await r.consultarSaldo(fila.cuenta_publica);
-          const tx = await r.vencer(fila.cuenta_publica, saldo);
-          evento = await anotar(yo.sesion, 'baja', tx, r);
-          if (!tx.ok) return json(res, 502, { error: tx.mensaje, transaccion: evento });
-        }
-        // Pendiente o rechazado: nunca estuvo autorizado, no hay nada que anular.
+        // Como en las tarjetas de beneficios reales: quien deja la empresa
+        // no recibe mas vales, pero lo que ya recibio es suyo y lo puede usar
+        // hasta que el programa venza. Al vencer se anula con el de todos.
+        // Por eso no se toca la red ni se le cierra el acceso.
         const baja = await db.marcarBaja(yo.sesion, fila.id);
-        await db.anularTarjetas(yo.sesion, fila.id);
-        const usuario = await db.usuarioDe(yo.sesion, 'beneficiario', fila.id);
-        if (usuario) await db.subirVersion(usuario.id);
-        return json(res, 200, { beneficiario: baja, transaccion: evento });
+        return json(res, 200, { beneficiario: baja });
       }
 
       case 'restablecer': {
@@ -118,25 +106,6 @@ export default manejar({
         if (!usuario) return json(res, 409, { error: 'Esta persona todavía no tiene acceso.' });
         return json(res, 200, { token: tokenDeRestablecer(usuario), nombre: fila.nombre });
       }
-
-      case 'tarjeta': {
-        if (fila.estado === 'baja' || fila.estado === 'rechazado') {
-          return json(res, 409, { error: 'No se puede dar una tarjeta a alguien dado de baja o rechazado.' });
-        }
-        for (let intento = 0; intento < 5; intento += 1) {
-          try {
-            const t = await db.emitirTarjeta(yo.sesion, fila.id, numeroDeTarjeta());
-            return json(res, 201, { tarjeta: t.numero, nombre: fila.nombre });
-          } catch (e) {
-            if (e?.code !== '23505') throw e;
-          }
-        }
-        throw new Error('No se pudo generar un número de tarjeta único.');
-      }
-
-      case 'anularTarjeta':
-        await db.anularTarjetas(yo.sesion, fila.id);
-        return json(res, 200, { anulada: true });
 
       default:
         return json(res, 400, { error: 'Acción desconocida.' });

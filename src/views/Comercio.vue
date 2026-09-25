@@ -2,13 +2,12 @@
 /**
  * La pantalla de la tienda.
  *
- * Cobrar funciona como un vale de alimentos real: el cajero escribe el monto
- * y elige como paga el cliente.
- *  - Con su celular: se muestra un QR de cobro con un codigo de 6 numeros
- *    debajo. El cliente lo escanea o escribe el codigo, y confirma en su
- *    celular. Cuando paga, aqui se ve "¡Te pagaron!".
- *  - Con tarjeta (quien no tiene smartphone): se escanea o escribe el numero
- *    de su tarjeta y el cliente marca su PIN en este equipo.
+ * Cobrar funciona como un vale de alimentos real. El cajero escribe el monto
+ * y cobra de una de dos formas:
+ *  - Mostrar QR: el cliente lo escanea con su celular y confirma. Cuando
+ *    paga, aqui se ve "¡Te pagaron!" al instante.
+ *  - Con su codigo: el cliente le dicta el codigo de pago que genero en su
+ *    celular (6 numeros, sirve una vez), el cajero lo escribe y listo.
  *
  * El rubro de la tienda se fija al afiliarla: no se elige en cada venta. Que
  * con el vale se compren solo productos permitidos es responsabilidad del
@@ -23,12 +22,9 @@ import {
 import {
   estado, enPalabras, hablar, montoValido, soles,
 } from '../estado.js';
-import { agrupar, enlaceCobro, leerQr, leerTarjeta } from '../enlaces.js';
+import { enlaceCobro } from '../enlaces.js';
 import { RUBROS } from '../../lib/rubros.js';
-import { TOPE_DIARIO_TARJETA } from '../../lib/reglas.js';
-import Escaner from '../Escaner.vue';
 import Icono from '../Icono.vue';
-import Pin from '../Pin.vue';
 import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
 
@@ -37,18 +33,17 @@ const yo = computed(() => estado.comercios[0] ?? null);
 const puedeCobrar = computed(() => yo.value && yo.value.estado !== 'rechazado');
 
 // --- Cobrar -----------------------------------------------------------------
-// monto -> qr (espera el pago) | tarjeta -> pin -> cobrando -> hecho | rechazado
+// monto -> qr (espera el pago) | codigo -> cobrando -> hecho | rechazado
 
 const paso = ref('monto');
 const monto = ref('');
 const aviso = ref('');
 const trabajando = ref(false);
-const cobroActivo = ref(null);    // { token, codigo, monto, venceLocal, pagado }
-const tarjeta = ref({ numero: '', escrito: '', pin: '' });
-const hayCamara = ref(true);
+const cobroActivo = ref(null);    // { token, monto, venceLocal, pagado }
+const codigoCliente = ref('');
 const resultado = ref(null);
 const campoMonto = ref(null);
-const campoTarjeta = ref(null);
+const campoCodigo = ref(null);
 
 const ahora = ref(Date.now());
 const reloj = setInterval(() => { ahora.value = Date.now(); }, 1000);
@@ -64,7 +59,7 @@ async function nuevoCobro() {
   monto.value = '';
   aviso.value = '';
   cobroActivo.value = null;
-  tarjeta.value = { numero: '', escrito: '', pin: '' };
+  codigoCliente.value = '';
   resultado.value = null;
   await nextTick();
   campoMonto.value?.focus();
@@ -81,7 +76,7 @@ function montoListo() {
   return m;
 }
 
-/** El cliente paga con su celular: se genera el QR con su codigo de 6 numeros. */
+/** El cliente escanea: se genera el QR con el monto, firmado y con vencimiento. */
 async function cobrarConQr() {
   const m = montoListo();
   if (!m) return;
@@ -99,48 +94,33 @@ async function cobrarConQr() {
   }
 }
 
-/** El cliente tiene tarjeta: se lee su numero y marca su PIN aqui. */
-async function cobrarConTarjeta() {
+/** El cliente dicta su codigo de pago. */
+async function pedirCodigo() {
   if (!montoListo()) return;
-  hayCamara.value = true;
-  tarjeta.value = { numero: '', escrito: '', pin: '' };
-  paso.value = 'tarjeta';
+  codigoCliente.value = '';
+  paso.value = 'codigo';
   await nextTick();
-  campoTarjeta.value?.focus();
+  campoCodigo.value?.focus();
 }
 
-function tarjetaLeida(texto) {
-  const n = leerTarjeta(texto) ?? (leerQr(texto)?.tipo === 'tarjeta' ? leerQr(texto).numero : null);
-  if (!n) {
-    aviso.value = 'Ese número no es de una tarjeta StellarRail. Empieza con SR.';
+async function cobrarConCodigo() {
+  const c = codigoCliente.value.replace(/\D/g, '');
+  if (c.length !== 6) {
+    aviso.value = 'El código del cliente tiene 6 números.';
     return;
   }
   aviso.value = '';
-  tarjeta.value.numero = n;
-  tarjeta.value.pin = '';
-  paso.value = 'pin';
-}
-
-async function pagarConTarjeta() {
-  aviso.value = '';
   paso.value = 'cobrando';
   try {
-    const r = await api.pagar({ tarjeta: tarjeta.value.numero, pin: tarjeta.value.pin, monto: monto.value });
+    const r = await api.cobrarConCodigo(c, monto.value);
     resultado.value = r;
     paso.value = r.pagado ? 'hecho' : 'rechazado';
-    if (r.pagado && voz.value) {
-      hablar(`Cobro hecho: ${enPalabras(r.monto)}. Le quedan ${enPalabras(r.saldoRestante ?? 0)}.`);
-    }
+    if (r.pagado && voz.value) hablar(`Cobro hecho: ${enPalabras(r.monto)}.`);
     cargar();
   } catch (e) {
-    if (e.datos?.requierePin) {
-      aviso.value = e.message;
-      tarjeta.value.pin = '';
-      paso.value = 'pin';
-      return;
-    }
-    resultado.value = { pagado: false, controlDe: 'error', mensaje: e.message };
-    paso.value = 'rechazado';
+    // Codigo equivocado, usado o vencido: se queda para escribirlo otra vez.
+    aviso.value = e.message;
+    paso.value = 'codigo';
   }
 }
 
@@ -228,29 +208,25 @@ const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', m
     <!-- En computadora, dos columnas: cobrar a la izquierda, lo del dia a la derecha. -->
     <div :class="['columnas', { sola: yo.estado === 'rechazado' }]">
       <div class="columna">
-        <section class="tarjeta">
-          <div class="fila" style="border:none;padding:0">
-            <div>
-              <h2 style="margin:0">{{ yo.nombre }}</h2>
-              <p class="apagado pequeno" style="margin:0">{{ RUBROS[yo.rubro] ?? '' }}<template v-if="yo.distrito"> · {{ yo.distrito }}</template></p>
-            </div>
-            <span :class="['etiqueta', yo.estado === 'verificado' ? 'ok' : yo.estado === 'rechazado' ? 'no' : 'espera']">
-              {{ yo.estado === 'verificado' ? 'Afiliada' : yo.estado === 'rechazado' ? 'No aprobada' : 'En revisión' }}
-            </span>
+        <div class="tienda-cabecera">
+          <div>
+            <p class="saludo" style="margin:0">{{ yo.nombre }}</p>
+            <p class="apagado pequeno" style="margin:0">{{ RUBROS[yo.rubro] ?? '' }}<template v-if="yo.distrito"> · {{ yo.distrito }}</template></p>
           </div>
-          <div v-if="yo.estado === 'pendiente'" class="aviso espera">
-            <strong>Tu tienda aún no está afiliada</strong>
-            Mientras la empresa no la apruebe, la red de pagos rechazará los cobros.
-          </div>
-          <div v-else-if="yo.estado === 'rechazado'" class="aviso no">
-            <strong>Tu tienda no fue aprobada</strong>
-            No puedes cobrar vales de esta empresa.
-          </div>
-        </section>
+          <span :class="['etiqueta', yo.estado === 'verificado' ? 'ok' : yo.estado === 'rechazado' ? 'no' : 'espera']">
+            {{ yo.estado === 'verificado' ? 'Afiliada' : yo.estado === 'rechazado' ? 'No aprobada' : 'En revisión' }}
+          </span>
+        </div>
+        <div v-if="yo.estado === 'pendiente'" class="aviso espera">
+          <strong>Tu tienda aún no está afiliada</strong>
+          Mientras la empresa no la apruebe, la red de pagos rechazará los cobros.
+        </div>
+        <div v-else-if="yo.estado === 'rechazado'" class="aviso no">
+          <strong>Tu tienda no fue aprobada</strong>
+          No puedes cobrar vales de esta empresa.
+        </div>
 
-        <section v-if="puedeCobrar" class="tarjeta">
-          <h2>Cobrar</h2>
-
+        <section v-if="puedeCobrar" class="tarjeta caja">
           <!-- ============ MONTO ============ -->
           <form v-if="paso === 'monto'" @submit.prevent="cobrarConQr">
             <label for="cm" class="pregunta">¿Cuánto cobras?</label>
@@ -262,14 +238,14 @@ const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', m
             </div>
             <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
             <button class="principal" :disabled="trabajando">
-              <Icono nombre="qr" :tamano="28" /> {{ trabajando ? 'Generando…' : 'Cobrar con QR' }}
+              <Icono nombre="qr" :tamano="28" /> {{ trabajando ? 'Generando…' : 'Mostrar QR' }}
             </button>
-            <button type="button" class="secundario" @click="cobrarConTarjeta">
-              <Icono nombre="tarjeta" /> El cliente tiene tarjeta
+            <button type="button" class="secundario" @click="pedirCodigo">
+              <Icono nombre="codigo" /> Cobrar con su código
             </button>
             <p class="apagado pequeno" style="margin-top:12px">
-              Con el vale solo se pueden cobrar los productos que cubre el programa de la
-              empresa, por ejemplo alimentos. Cobrar solo esos productos es tu responsabilidad.
+              Con el vale solo se cobran los productos que cubre el programa de la empresa,
+              por ejemplo alimentos. Cobrar solo esos productos es tu responsabilidad.
             </p>
           </form>
 
@@ -293,42 +269,27 @@ const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', m
               <Qr
                 :texto="enlaceCobro(cobroActivo.token)" nivel="M" :tamano="240"
                 :alt="`Código QR para pagar ${soles(cobroActivo.monto)} a ${yo.nombre}`" />
-              <p class="apagado" style="margin-bottom:0">Si no puede escanear, que escriba este código:</p>
-              <p class="codigo">{{ agrupar(cobroActivo.codigo) }}</p>
+              <p class="apagado" style="margin-bottom:6px">Que el cliente lo escanee con StellarRail.</p>
               <p class="esperando" aria-live="polite">
                 <span class="punto" aria-hidden="true" /> Esperando el pago · vence en {{ minutos }}
               </p>
-              <button class="secundario" @click="nuevoCobro"><Icono nombre="x" /> Cancelar cobro</button>
+              <button class="secundario" @click="pedirCodigo"><Icono nombre="codigo" /> No puede escanear: cobrar con su código</button>
+              <button class="enlace" @click="nuevoCobro">Cancelar cobro</button>
             </div>
           </template>
 
-          <!-- ============ TARJETA: leer su numero ============ -->
-          <template v-else-if="paso === 'tarjeta'">
-            <button class="enlace atras" @click="nuevoCobro"><Icono nombre="atras" /> Atrás</button>
-            <p class="destino">Cobro de {{ soles(monto) }} con tarjeta</p>
-            <Escaner v-if="hayCamara" etiqueta="Cámara para escanear la tarjeta" @leido="tarjetaLeida" @sin-camara="hayCamara = false" />
-            <form @submit.prevent="tarjetaLeida(tarjeta.escrito)">
-              <label for="tn">{{ hayCamara ? 'Escanea la tarjeta o escribe su número' : 'Número de la tarjeta (empieza con SR)' }}</label>
-              <input
-                id="tn" ref="campoTarjeta" v-model="tarjeta.escrito" class="numero-grande"
-                autocomplete="off" autocapitalize="characters" placeholder="SR-XXXX-XXXX">
-              <p class="apagado pequeno">Con tarjeta se pueden pagar hasta S/ {{ TOPE_DIARIO_TARJETA }} por día, siempre con PIN.</p>
-              <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-              <button class="principal">Continuar</button>
-            </form>
-          </template>
-
-          <!-- ============ TARJETA: PIN del cliente ============ -->
-          <form v-else-if="paso === 'pin'" class="confirmacion" @submit.prevent="pagarConTarjeta">
-            <p class="aviso espera"><strong>Pasa el equipo al cliente</strong>Que marque su PIN sin que nadie lo vea.</p>
+          <!-- ============ CODIGO DEL CLIENTE ============ -->
+          <form v-else-if="paso === 'codigo'" class="confirmacion" @submit.prevent="cobrarConCodigo">
+            <button type="button" class="enlace atras" @click="nuevoCobro"><Icono nombre="atras" /> Atrás</button>
+            <p class="apagado" style="margin:0">Cobro de</p>
             <p class="monto-grande">{{ soles(monto) }}</p>
-            <p class="destino">a {{ yo.nombre }}</p>
-            <Pin v-model="tarjeta.pin" id="pin-tarjeta" etiqueta="Cliente: marca tu PIN" teclado destacado />
+            <label for="cc" class="pregunta">Código del cliente</label>
+            <p class="apagado pequeno">Pídele que toque «Mostrar mi código» en su celular y te lo dicte.</p>
+            <input
+              id="cc" ref="campoCodigo" v-model="codigoCliente" class="numero-grande codigo-campo"
+              inputmode="numeric" maxlength="7" autocomplete="off" placeholder="000 000">
             <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-            <button class="principal si" :disabled="tarjeta.pin.length !== 4">
-              <Icono nombre="check" :tamano="28" /> Pagar
-            </button>
-            <button type="button" class="secundario" @click="nuevoCobro"><Icono nombre="x" /> Cancelar</button>
+            <button class="principal"><Icono nombre="check" :tamano="28" /> Cobrar {{ soles(monto) }}</button>
           </form>
 
           <div v-else-if="paso === 'cobrando'" class="resultado" aria-live="polite">
@@ -342,7 +303,6 @@ const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', m
             <p class="titulo-resultado">¡Pago hecho!</p>
             <p class="monto-grande">{{ soles(resultado.monto) }}</p>
             <p>Pagó {{ resultado.pagador }}.</p>
-            <p v-if="resultado.saldoRestante">Le quedan <b>{{ soles(resultado.saldoRestante) }}</b> en su vale.</p>
             <button class="principal" @click="nuevoCobro">Nuevo cobro</button>
             <details>
               <summary>Ver comprobante</summary>
@@ -368,29 +328,35 @@ const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', m
 
       <div v-if="puedeCobrar" class="columna">
         <section class="tarjeta">
-          <button class="interruptor" :aria-pressed="voz" @click="cambiarVoz">
-            <Icono nombre="altavoz" />
-            <span>Avisarme en voz alta cuando me paguen</span>
-            <span class="estado-interruptor">{{ voz ? 'Sí' : 'No' }}</span>
-          </button>
-        </section>
-
-        <section class="tarjeta">
           <h2>Hoy</h2>
           <div class="cifras">
             <div class="cifra"><b>{{ soles(totalHoy) }}</b><span>Recibiste hoy</span></div>
             <div class="cifra"><b>{{ deHoy.length }}</b><span>Pagos de hoy</span></div>
           </div>
-          <div v-for="p in recibidos.slice(0, 10)" :key="p.id" class="fila">
-            <div>
-              <div class="nombre">{{ soles(p.monto) }}</div>
-              <div class="apagado pequeno">{{ hora(p.fecha) }}</div>
-            </div>
-            <a :href="explorador(p.hash)" target="_blank" rel="noopener" class="pequeno">comprobante</a>
-          </div>
+          <ul class="movimientos">
+            <li v-for="p in recibidos.slice(0, 10)" :key="p.id">
+              <span class="mov-icono entra" aria-hidden="true"><Icono nombre="abajo" :tamano="18" /></span>
+              <span class="mov-texto">
+                <b>Pago con vale</b>
+                <span class="apagado pequeno">{{ hora(p.fecha) }}</span>
+              </span>
+              <span class="mov-lado">
+                <b class="mov-monto entra">+ {{ soles(p.monto) }}</b>
+                <a class="pequeno" :href="explorador(p.hash)" target="_blank" rel="noopener">comprobante</a>
+              </span>
+            </li>
+          </ul>
           <p v-if="enLaRed && recibidos.length" class="apagado pequeno" style="margin-top:10px">
             Total recibido en vales: {{ soles(enLaRed.saldo) }}
           </p>
+        </section>
+
+        <section class="tarjeta">
+          <button class="interruptor" :aria-pressed="voz" @click="cambiarVoz">
+            <Icono nombre="altavoz" />
+            <span>Avisarme en voz alta cuando me paguen</span>
+            <span class="estado-interruptor">{{ voz ? 'Sí' : 'No' }}</span>
+          </button>
         </section>
       </div>
     </div>

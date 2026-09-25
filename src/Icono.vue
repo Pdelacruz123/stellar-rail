@@ -36,6 +36,9 @@ const TRAZOS = {
   flecha: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   salir: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/>',
   celular: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+  codigo: '<path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/>',
+  abajo: '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  arriba: '<path d="M12 19V5M6 11l6-6 6 6"/>',
 };
 </script>
 

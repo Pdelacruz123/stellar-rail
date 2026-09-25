@@ -219,12 +219,13 @@ async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
       <aside class="entrada-lateral">
         <h2 class="entrada-titulo">Vales de alimentos que se pagan con QR en la bodega.</h2>
         <p class="apagado">
-          La empresa entrega el vale, el trabajador paga desde su celular o con
-          una tarjeta, y la bodega cobra al instante, sin POS y sin comisión.
+          La empresa entrega el vale y el trabajador paga desde su celular:
+          escanea el QR de la bodega o le dicta su código. La bodega cobra al
+          instante, sin POS y sin comisión.
         </p>
         <ul class="entrada-puntos">
           <li><Icono nombre="escudo" :tamano="20" /> Solo sirve en las bodegas que la empresa afilia: la red rechaza las demás.</li>
-          <li><Icono nombre="reloj" :tamano="20" /> Al vencer, la empresa congela el vale y anula el saldo no usado.</li>
+          <li><Icono nombre="reloj" :tamano="20" /> Lo que no se usa no se pierde: al vencer, la empresa anula ese saldo y su respaldo en soles deja de estar comprometido.</li>
           <li><Icono nombre="historial" :tamano="20" /> Cada pago queda con un comprobante público en Stellar.</li>
         </ul>
         <p class="apagado pequeno entrada-legal">

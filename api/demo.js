@@ -2,14 +2,14 @@
  * POST /api/demo
  *
  * "Probar la demostracion": crea en un clic una empresa de prueba con cinco
- * personas, cada una con su acceso, y devuelve sus datos para que el jurado
- * pueda entrar como cualquiera. Nada de credenciales escondidas en un archivo.
+ * personas, cada una con su acceso, y devuelve sus datos para que quien
+ * prueba pueda entrar como cualquiera. Nada de credenciales escondidas.
  *
- * Las cinco cuentas se crean en UNA transaccion de red. Nacen pendientes: el
- * jurado hace la verificacion, que es justo lo que tiene que ver.
+ * Las cinco cuentas se crean en UNA transaccion de red. Nacen pendientes:
+ * quien prueba hace la verificacion, que es justo lo que tiene que ver.
  *
- *   - Maria, con smartphone.
- *   - Rosa, sin smartphone: paga con una tarjeta impresa y su PIN.
+ *   - Maria y Rosa, trabajadoras: pagan escaneando el QR de la tienda o
+ *     dictando su codigo de pago.
  *   - Bodega Don Julio, para afiliar.
  *   - Minimarket La Esquina, para NO afiliar y ver el rechazo de la red.
  *   - Electro Hogar, de electrodomesticos, para ver el control de rubros.
@@ -20,7 +20,7 @@
 import { json, manejar, riel } from '../lib/http.js';
 import { altaEnLote } from '../lib/altas.js';
 import {
-  celularAlAzar, cifrar, contrasenaAlAzar, numeroDeTarjeta, pinAlAzar,
+  celularAlAzar, cifrar, contrasenaAlAzar, pinAlAzar,
 } from '../lib/credenciales.js';
 import { nuevaSesion } from '../lib/cuentas.js';
 import * as db from '../lib/db.js';
@@ -80,8 +80,8 @@ export default manejar({
     const [maria, rosa] = alta.beneficiarios;
     const [julio, esquina, electro] = alta.comercios;
     const plan = [
-      { clave: 'maria', rol: 'beneficiario', fila: maria, perfil: 'Trabajadora · con smartphone' },
-      { clave: 'rosa', rol: 'beneficiario', fila: rosa, perfil: 'Trabajadora · paga con tarjeta' },
+      { clave: 'maria', rol: 'beneficiario', fila: maria, perfil: 'Trabajadora' },
+      { clave: 'rosa', rol: 'beneficiario', fila: rosa, perfil: 'Trabajadora' },
       { clave: 'julio', rol: 'comercio', fila: julio, perfil: 'Bodega · alimentos · San Juan de Lurigancho' },
       { clave: 'esquina', rol: 'comercio', fila: esquina, perfil: 'Minimarket · alimentos · Comas' },
       { clave: 'electro', rol: 'comercio', fila: electro, perfil: 'Tienda · electrodomésticos · Comas' },
@@ -99,15 +99,6 @@ export default manejar({
         perfil: p.perfil,
       });
     }
-
-    // La tarjeta impresa de Rosa.
-    let tarjeta;
-    for (let intento = 0; intento < 5 && !tarjeta; intento += 1) {
-      try { tarjeta = await db.emitirTarjeta(sesion, rosa.id, numeroDeTarjeta()); } catch (e) {
-        if (e?.code !== '23505') throw e;
-      }
-    }
-    personas.find((p) => p.clave === 'rosa').tarjeta = tarjeta.numero;
 
     return json(res, 201, {
       empresa: { nombre: EMPRESA, correo, contrasena },

@@ -42,8 +42,6 @@ export const api = {
   verificarBeneficiario: (id, aprobar) =>
     pedir('beneficiarios', 'POST', { accion: 'verificar', id, aprobar }),
   darDeBaja: (id) => pedir('beneficiarios', 'POST', { accion: 'baja', id }),
-  darTarjeta: (id) => pedir('beneficiarios', 'POST', { accion: 'tarjeta', id }),
-  anularTarjeta: (id) => pedir('beneficiarios', 'POST', { accion: 'anularTarjeta', id }),
   /** @param {'beneficiarios'|'comercios'} tabla */
   nuevoPin: (tabla, id) => pedir(tabla, 'POST', { accion: 'restablecer', id }),
 
@@ -58,9 +56,14 @@ export const api = {
   entregar: (id, beneficiarios) => pedir('programas', 'POST', { accion: 'entregar', id, beneficiarios }),
   vencer: (id) => pedir('programas', 'POST', { accion: 'vencer', id }),
 
-  /** El cobro que se va a pagar, por su QR ({cobro}) o su codigo de 6 numeros ({codigo}). */
-  verCobro: (datos) => pedir('pagos', 'POST', { accion: 'ver', ...datos }),
+  /** El cobro del QR de la tienda, para verlo antes de pagar. */
+  verCobro: (cobro) => pedir('pagos', 'POST', { accion: 'ver', cobro }),
   pagar: (datos) => pedir('pagos', 'POST', datos),
+  /** El trabajador genera su codigo de pago con su PIN. */
+  miCodigo: (pin) => pedir('pagos', 'POST', { accion: 'miCodigo', pin }),
+  estadoCodigo: (codigo) => pedir('pagos', 'POST', { accion: 'estadoCodigo', codigo }),
+  /** La tienda cobra con el codigo que le dicta el cliente. */
+  cobrarConCodigo: (codigo, monto) => pedir('pagos', 'POST', { codigo, monto }),
   eventos: () => pedir('eventos'),
 };
 
@@ -123,6 +126,29 @@ export async function pagosRecibidos(horizon, cuenta, activo, emisor, limite = 1
       fecha: p.created_at,
       hash: p.transaction_hash,
       rubro: rubroDelMemo(p.transaction),
+    }));
+}
+
+/**
+ * Los movimientos del vale de un trabajador: lo que recibio de la empresa y
+ * lo que pago en las tiendas. Solo pagos exitosos: uno rechazado no movio
+ * dinero.
+ */
+export async function movimientosDelVale(horizon, cuenta, activo, emisor, limite = 10) {
+  const r = await fetch(`${horizon}/accounts/${cuenta}/payments?order=desc&limit=${limite * 2}`);
+  if (!r.ok) return [];
+  const datos = await r.json();
+  return datos._embedded.records
+    .filter((p) => p.type === 'payment' && p.asset_code === activo && p.asset_issuer === emisor
+      && (p.to === cuenta || p.from === cuenta))
+    .slice(0, limite)
+    .map((p) => ({
+      id: p.id,
+      entra: p.to === cuenta,
+      contraparte: p.to === cuenta ? p.from : p.to,
+      monto: p.amount,
+      fecha: p.created_at,
+      hash: p.transaction_hash,
     }));
 }
 
