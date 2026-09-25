@@ -10,8 +10,9 @@
  *   POST { nombre, rubro, distrito, celular, pin }  la empresa la da de alta
  *   POST { accion:'verificar', id, aprobar }     afiliar o rechazar
  *   POST { accion:'restablecer', id }            enlace para un PIN nuevo
- *   POST { accion:'cobrar', monto, rubro }       la tienda genera un QR con
- *                                                monto, firmado, que caduca
+ *   POST { accion:'cobrar', monto }              la tienda genera un QR con
+ *                                                monto, firmado, que caduca, y
+ *                                                su codigo de 6 numeros
  *
  * El registro pide el nombre y nada mas del negocio. Muchas bodegas de Lima
  * no tienen RUC o estan en el RUS: exigirlo dejaria fuera al usuario que
@@ -21,6 +22,7 @@ import {
   anotar, cuerpo, exigir, exigirSesion, iniciarSesion, json, leerIdentidad,
   leerInvitacion, manejar, riel, tokenDeRestablecer,
 } from '../lib/http.js';
+import { randomInt } from 'node:crypto';
 import { altaConAcceso } from '../lib/altas.js';
 import { crearCobro } from '../lib/cobros.js';
 import { esRubro } from '../lib/rubros.js';
@@ -54,7 +56,6 @@ export default manejar({
           nombre: c.nombre,
           distrito: c.distrito,
           rubro: c.rubro,
-          codigo_corto: c.codigo_corto,
           afiliado: c.estado === 'verificado',
         })),
       });
@@ -86,13 +87,23 @@ export default manejar({
       if (!exigir(yo, res, 'comercio')) return undefined;
       const fila = await db.comercio(yo.sesion, yo.id);
       if (!fila) return json(res, 404, { error: 'Tu tienda no existe.' });
+      // El rubro es el de la tienda, fijado al afiliarla: no lo declara en
+      // cada venta. Que venda solo lo permitido es responsabilidad del
+      // cajero, como con cualquier tarjeta de alimentos.
       const cobro = crearCobro({
         sesion: yo.sesion,
         comercioId: fila.id,
         monto: datos.monto,
-        rubro: datos.rubro ?? fila.rubro,
+        rubro: fila.rubro,
       });
-      return json(res, 201, { cobro: { ...cobro, comercio: { id: fila.id, nombre: fila.nombre } } });
+      // Codigo de respaldo de 6 numeros, para quien no puede escanear el QR.
+      let codigo = null;
+      for (let intento = 0; intento < 12 && !codigo; intento += 1) {
+        const candidato = String(randomInt(0, 1_000_000)).padStart(6, '0');
+        if (await db.guardarCodigoCobro(yo.sesion, candidato, cobro.token, cobro.expira)) codigo = candidato;
+      }
+      if (!codigo) throw new Error('No se pudo generar el código del cobro.');
+      return json(res, 201, { cobro: { ...cobro, codigo, comercio: { id: fila.id, nombre: fila.nombre } } });
     }
 
     if (!exigir(yo, res, 'empresa')) return undefined;

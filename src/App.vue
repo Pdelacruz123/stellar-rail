@@ -21,8 +21,8 @@ import Restablecer from './views/Restablecer.vue';
  *   #/                    entrar o crear cuenta, o la pantalla de quien entro
  *   #/unirse/<token>      registrarse con una invitacion
  *   #/restablecer/<token> poner un PIN nuevo
- *   #/pagar/<codigo>      QR fijo de una tienda: el trabajador escribe el monto
- *   #/cobro/<token>       QR con monto: el trabajador solo confirma
+ *   #/cobro/<token>       QR de cobro de una tienda, abierto con la camara:
+ *                         el trabajador ve el cobro y confirma
  *
  * Como cualquier pagina con cuentas: cada persona entra con la suya y ve solo
  * su pantalla. Para cambiar de persona, se sale y se entra con otra.
@@ -35,10 +35,8 @@ window.addEventListener('hashchange', alCambiarHash);
 const partes = computed(() => ruta.value.split('/'));
 const pagina = computed(() => partes.value[0]);
 const token = computed(() => partes.value.slice(1).join('/'));
-const codigoAPagar = computed(() => (pagina.value === 'pagar' ? token.value : ''));
 const cobroAPagar = computed(() => (pagina.value === 'cobro' ? token.value : ''));
 
-const VISTAS = { beneficiario: Beneficiario, comercio: Comercio };
 const rol = computed(() => (conSesion() ? estado.yo.rol : null));
 const esEmpresa = computed(() => rol.value === 'empresa');
 const conPagina = computed(() => ['unirse', 'restablecer'].includes(pagina.value));
@@ -100,7 +98,8 @@ onUnmounted(() => {
 
       <template v-else-if="rol">
         <div v-if="estado.error" class="aviso no" role="alert">{{ estado.error }}</div>
-        <component :is="VISTAS[rol]" :codigo="codigoAPagar" :cobro="cobroAPagar" />
+        <Beneficiario v-if="rol === 'beneficiario'" :cobro="cobroAPagar" />
+        <Comercio v-else />
         <p class="pie-persona">
           <button class="enlace" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
         </p>

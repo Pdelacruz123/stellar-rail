@@ -1,17 +1,18 @@
 /**
  * POST /api/pagos
  *
- * Desde el celular del trabajador:
- *   { cobro, pin? }                  pagar un QR con monto: solo confirma
- *   { codigo | comercioId, monto,    pagar el QR fijo de la tienda, o su
- *     pin? }                         codigo de 6 digitos, escribiendo el monto
- *   Por encima de S/ 50 pide su PIN. Por debajo basta con confirmar: es un
- *   celular con la sesion abierta, como un pago con Yape.
+ * Como un vale de alimentos real: la tienda escribe el monto y genera un
+ * cobro (QR con su codigo de respaldo de 6 numeros), o cobra con la tarjeta
+ * de quien no tiene smartphone.
+ *
+ * Desde el celular de la trabajadora:
+ *   { accion:'ver', cobro | codigo }   ver el cobro: tienda, monto, si se puede
+ *   { cobro | codigo, pin? }           pagarlo. Por encima de S/ 50 pide su PIN
  *
  * Desde el equipo de la tienda, para quien no tiene smartphone:
- *   { tarjeta, pin, monto, rubro? }  la tienda escanea la tarjeta impresa y
- *                                    el trabajador marca su PIN. Siempre con
- *                                    PIN y con un tope de S/ 100 al dia.
+ *   { tarjeta, pin, monto }            la tienda escanea la tarjeta impresa y
+ *                                      el trabajador marca su PIN. Siempre con
+ *                                      PIN y con un tope de S/ 100 al dia.
  *
  * DOS CONTROLES DISTINTOS, y la respuesta dice cual actuo (`controlDe`):
  *
@@ -35,7 +36,7 @@ import { derivarCuenta } from '../lib/cuentas.js';
 import { leerCobro } from '../lib/cobros.js';
 import { TOPE_DIARIO_TARJETA, UMBRAL_PIN, normalizarTarjeta } from '../lib/credenciales.js';
 import { normalizarMonto } from '../lib/riel/montos.js';
-import { RUBROS, esRubro } from '../lib/rubros.js';
+import { RUBROS } from '../lib/rubros.js';
 import * as db from '../lib/db.js';
 
 /** En Peru se escribe 18,50; la red espera 18.50. */
@@ -72,34 +73,53 @@ async function enviarPago(sesion, pagador, destino, monto, rubro) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * El cobro que la trabajadora quiere pagar: del QR (su token firmado) o de
+ * su codigo de respaldo de 6 numeros. El monto y la tienda vienen del cobro:
+ * ella no escribe nada mas.
+ */
+async function resolverCobro(yo, datos) {
+  let token = datos.cobro ? String(datos.cobro) : null;
+  if (!token) {
+    const codigo = String(datos.codigo ?? '').replace(/\D/g, '');
+    if (!/^\d{6}$/.test(codigo)) throw new TypeError('Escribe los 6 números que te muestra la tienda.');
+    token = await db.tokenDeCodigo(yo.sesion, codigo);
+    if (!token) {
+      return { error: 'No encontramos ese cobro. Revisa los 6 números o pide a la tienda que genere otro.' };
+    }
+  }
+  const cobro = leerCobro(yo.sesion, token);
+  if (cobro.error) return { error: cobro.error };
+  const destino = await db.comercio(yo.sesion, cobro.comercioId);
+  if (!destino) return { error: 'Este cobro es de una tienda que no existe.' };
+  return { token, cobro, destino };
+}
+
 async function pagoConCelular(yo, datos, res) {
   const quien = await db.beneficiario(yo.sesion, yo.id);
   if (!quien) return json(res, 404, { error: 'No encontramos tu registro.' });
 
-  // --- A quien, cuanto y de que rubro.
-  let destino;
-  let monto;
-  let rubro;
-  let cobro = null;
-  if (datos.cobro) {
-    // QR con monto: todo viene firmado por la tienda. El trabajador no puede
-    // tocar ni el monto ni el rubro.
-    cobro = leerCobro(yo.sesion, datos.cobro);
-    if (cobro.error) return json(res, 400, { error: cobro.error });
-    destino = await db.comercio(yo.sesion, cobro.comercioId);
-    monto = cobro.monto;
-    rubro = cobro.rubro;
-  } else {
-    destino = datos.codigo
-      ? await db.comercioPorCodigo(yo.sesion, String(datos.codigo).replace(/\s/g, ''))
-      : await db.comercio(yo.sesion, datos.comercioId);
-    monto = montoDe(datos.monto);
-    rubro = destino?.rubro ?? 'alimentos';
-  }
-  if (!destino) return json(res, 404, { error: 'No encontramos esa tienda. Revisa el código.' });
-  const comercio = { id: destino.id, nombre: destino.nombre };
+  const r = await resolverCobro(yo, datos);
+  if (r.error) return json(res, 404, { error: r.error });
+  const { token, cobro, destino } = r;
+  const { monto, rubro } = cobro;
+  const comercio = { id: destino.id, nombre: destino.nombre, distrito: destino.distrito, rubro: destino.rubro };
 
-  // --- Control 2: el rubro. Lo aplica la aplicacion, no la red.
+  // --- Ver el cobro antes de confirmarlo: tienda, monto y si se puede pagar.
+  if (datos.accion === 'ver') {
+    const programa = await db.programaVigente(yo.sesion);
+    return json(res, 200, {
+      cobro: token,
+      monto,
+      rubro,
+      comercio,
+      yaPagado: await db.cobroYaUsado(cobro.firma),
+      cubierto: !programa || programa.rubros.includes(rubro),
+      requierePin: Number(monto) > UMBRAL_PIN,
+    });
+  }
+
+  // --- Control 2: el rubro de la tienda. Lo aplica la aplicacion, no la red.
   const rechazo = await rechazoPorRubro(yo.sesion, rubro, monto, comercio);
   if (rechazo) return json(res, 200, rechazo);
 
@@ -116,8 +136,8 @@ async function pagoConCelular(yo, datos, res) {
     if (!c.ok) return json(res, c.estado, { requierePin: true, error: c.error });
   }
 
-  // Un QR con monto se paga una sola vez. Se reserva antes de enviar.
-  if (cobro && !await db.reclamarCobro(yo.sesion, cobro.firma)) {
+  // Un cobro se paga una sola vez. Se reserva antes de enviar.
+  if (!await db.reclamarCobro(yo.sesion, cobro.firma)) {
     return json(res, 409, { error: 'Este cobro ya fue pagado.' });
   }
 
@@ -125,7 +145,7 @@ async function pagoConCelular(yo, datos, res) {
   const { tx, evento } = await enviarPago(yo.sesion, quien, destino, monto, rubro);
 
   // Si la red lo rechazo, no se movio dinero: el cobro se puede volver a usar.
-  if (cobro && !tx.ok) await db.liberarCobro(cobro.firma);
+  if (!tx.ok) await db.liberarCobro(cobro.firma);
 
   return json(res, 200, {
     pagado: tx.ok, controlDe: 'red', rubro, monto, comercio, transaccion: evento,
@@ -152,8 +172,8 @@ async function pagoConTarjeta(yo, datos, res) {
   if (!quien || !usuario) return json(res, 404, { error: 'No reconocemos esa tarjeta.' });
 
   const monto = montoDe(datos.monto);
-  const rubro = datos.rubro ?? tienda.rubro;
-  if (!esRubro(rubro)) return json(res, 400, { error: 'Ese rubro no existe.' });
+  // El rubro es el de la tienda, fijado al afiliarla.
+  const rubro = tienda.rubro;
 
   // --- La tarjeta sola no paga: el trabajador marca su PIN. Se comprueba
   // primero, antes de revelar nada sobre su vale.

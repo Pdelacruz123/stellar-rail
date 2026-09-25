@@ -2,22 +2,22 @@
 /**
  * La pantalla del trabajador.
  *
- * Pensada para alguien que no se maneja bien con el celular:
- *  - una sola cosa por pantalla;
- *  - nada que escribir si se puede evitar: con el QR con monto, solo se
- *    confirma;
- *  - botones grandes, con icono y palabra;
- *  - el resultado a pantalla completa, con una frase y lo que paso con su
- *    dinero;
- *  - nada tecnico a la vista: los codigos de la red van en "Detalles";
- *  - todo se puede escuchar en voz alta.
+ * Pagar funciona como un vale de alimentos real: en la tienda, el cajero
+ * escribe el monto y muestra un QR de cobro con un codigo de 6 numeros
+ * debajo. El trabajador toca "Pagar", escanea el QR o escribe el codigo, ve
+ * a quien le paga y cuanto, y confirma (con su PIN si pasa de S/ 50). No
+ * escribe montos ni elige tiendas.
+ *
+ * Pensada para alguien que no se maneja bien con el celular: una sola cosa
+ * por pantalla, botones grandes con icono y palabra, el resultado a pantalla
+ * completa, nada tecnico a la vista y todo se puede escuchar.
  */
 import { computed, nextTick, ref, watch } from 'vue';
 import { api, saldoEnLaRed } from '../api.js';
 import {
-  estado, enPalabras, fecha, hablar, montoValido, programaVigente, recargar, soles,
+  estado, enPalabras, fecha, hablar, programaVigente, recargar, soles,
 } from '../estado.js';
-import { verCobro } from '../enlaces.js';
+import { leerQr } from '../enlaces.js';
 import { RUBROS } from '../../lib/rubros.js';
 import { UMBRAL_PIN } from '../../lib/reglas.js';
 import Escaner from '../Escaner.vue';
@@ -26,7 +26,7 @@ import Pin from '../Pin.vue';
 import Prueba from '../Prueba.vue';
 
 const props = defineProps({
-  codigo: { type: String, default: '' },
+  // Un cobro abierto con la camara del celular: #/cobro/<token>
   cobro: { type: String, default: '' },
 });
 
@@ -38,15 +38,8 @@ const programa = computed(() => programaVigente());
 const rubrosDelPrograma = computed(() => (programa.value?.rubros ?? [])
   .map((r) => RUBROS[r] ?? r).join(', ').toLowerCase());
 // Donde sirve el vale: tiendas afiliadas y del rubro que cubre el programa.
-// Una tienda de electrodomesticos no sirve para un vale de alimentos.
 const afiliados = computed(() => estado.comercios.filter((c) => c.afiliado
   && (!programa.value || (programa.value.rubros ?? []).includes(c.rubro))));
-// Aprobado, pero la empresa todavia no le entrego el vale.
-const sinValeAun = computed(() => yo.value?.estado === 'verificado' && enLaRed.value
-  && !enLaRed.value.congelado && Number(enLaRed.value.saldo) === 0 && !programa.value?.entregados);
-// Solo se ofrece pagar si hay con que: sin saldo, los botones no sirven.
-const puedePagar = computed(() => yo.value?.estado === 'verificado' && !enLaRed.value?.congelado
-  && Number(enLaRed.value?.saldo ?? 0) > 0);
 
 // --- Saldo, leido de la red cada vez. Nunca lo guardamos. -------------------
 
@@ -62,14 +55,15 @@ async function cargarSaldo() {
     errorSaldo.value = e.message;
   }
 }
-// Por valores simples, no por el objeto: cada recarga crea objetos nuevos.
-// Se vuelve a leer al ser aprobado, al recibir el vale o si otra pantalla
-// de la demostracion cambio algo.
-watch(
-  [() => yo.value?.id, () => yo.value?.estado, () => programa.value?.entregados],
-  cargarSaldo,
-  { immediate: true },
-);
+const recibioElVale = computed(() => (programa.value?.recibieron ?? []).includes(yo.value?.id));
+watch([() => yo.value?.id, () => yo.value?.estado, recibioElVale], cargarSaldo, { immediate: true });
+
+// Aprobado, pero la empresa todavia no le entrego el vale de este programa.
+const sinValeAun = computed(() => yo.value?.estado === 'verificado' && enLaRed.value
+  && !enLaRed.value.congelado && Number(enLaRed.value.saldo) === 0 && !recibioElVale.value);
+// Solo se ofrece pagar si hay con que.
+const puedePagar = computed(() => yo.value?.estado === 'verificado' && !enLaRed.value?.congelado
+  && Number(enLaRed.value?.saldo ?? 0) > 0);
 
 function escucharSaldo() {
   if (!enLaRed.value) return;
@@ -78,140 +72,106 @@ function escucharSaldo() {
     : `Tienes ${enPalabras(enLaRed.value.saldo)} en tu vale.`);
 }
 
-// --- Pagar: una pantalla por paso -------------------------------------------
-// inicio -> escanear | codigo -> monto -> confirmar -> pagando -> hecho | rechazado
+// --- Pagar ------------------------------------------------------------------
+// inicio -> pagar (escanear o escribir el codigo) -> confirmar -> pagando -> hecho | rechazado
 
 const pantalla = ref('inicio');
-const destino = ref(null);
-const pago = ref({ monto: '', cobro: null, rubro: null });
+const cobro = ref(null);       // { cobro, monto, rubro, comercio, cubierto, yaPagado, requierePin }
+const codigo = ref('');
 const pin = ref('');
-const codigoEscrito = ref('');
 const aviso = ref('');
 const resultado = ref(null);
-const campo = ref(null);
-// Cada paso que espera a la red lleva un numero de vuelta. Si mientras tanto
-// la persona volvio al inicio, la respuesta que llega tarde se descarta: no
-// puede reabrir una pantalla que ella ya cerro.
+const buscando = ref(false);
+const hayCamara = ref(true);
+const campoCodigo = ref(null);
+// Si la persona vuelve al inicio mientras se busca un cobro, la respuesta
+// que llega tarde se descarta: no reabre una pantalla que ella ya cerro.
 let vuelta = 0;
 
-async function enfocar() {
+async function abrirPagar() {
+  aviso.value = '';
+  codigo.value = '';
+  hayCamara.value = true;
+  pantalla.value = 'pagar';
   await nextTick();
-  campo.value?.focus();
+  campoCodigo.value?.focus();
 }
 
 function reiniciar() {
   vuelta += 1;
   pantalla.value = 'inicio';
-  destino.value = null;
-  pago.value = { monto: '', cobro: null, rubro: null };
+  cobro.value = null;
+  codigo.value = '';
   pin.value = '';
-  codigoEscrito.value = '';
   aviso.value = '';
   resultado.value = null;
-  // Se limpia el enlace del QR: si se recarga la pagina, no vuelve a cobrar.
-  if (props.codigo || props.cobro) window.location.hash = '#/';
+  // Se limpia el enlace del QR: si se recarga la pagina, no vuelve a abrirlo.
+  if (props.cobro) window.location.hash = '#/';
 }
 
-/** QR fijo o codigo escrito: se sabe la tienda, falta el monto. */
-async function irATienda(codigo) {
+/** Busca el cobro (por su QR o su codigo de 6 numeros) y lo muestra para confirmar. */
+async function verCobro(datos) {
   const mia = ++vuelta;
   aviso.value = '';
-  await recargar(); // por si la tienda se registro hace un momento
-  if (mia !== vuelta) return;
-  const c = estado.comercios.find((x) => x.codigo_corto === String(codigo).replace(/\s/g, ''));
-  if (!c) {
-    aviso.value = 'No encontramos esa tienda. Revisa los 6 números.';
-    pantalla.value = 'codigo';
-    return;
+  buscando.value = true;
+  try {
+    const c = await api.verCobro(datos);
+    if (mia !== vuelta) return;
+    cobro.value = c;
+    pin.value = '';
+    pantalla.value = 'confirmar';
+  } catch (e) {
+    if (mia !== vuelta) return;
+    aviso.value = e.message;
+    if (pantalla.value !== 'pagar') pantalla.value = 'pagar';
+  } finally {
+    buscando.value = false;
   }
-  destino.value = c;
-  pago.value = { monto: '', cobro: null, rubro: c.rubro };
-  pantalla.value = 'monto';
-  enfocar();
 }
 
-/** QR con monto: la tienda ya puso todo; solo hay que confirmar. */
-async function irACobro(token) {
-  const mia = ++vuelta;
-  aviso.value = '';
-  const c = verCobro(token);
-  if (!c) {
-    aviso.value = 'Este código de cobro no se puede leer. Pide a la tienda que genere otro.';
-    pantalla.value = 'inicio';
+function alLeerQr(texto) {
+  const leido = leerQr(texto);
+  if (leido?.tipo !== 'cobro') {
+    aviso.value = 'Ese código no es un cobro de StellarRail. Escanea el QR que te muestra la tienda.';
     return;
   }
-  // El vencimiento NO se comprueba aqui: el reloj del celular puede ir mal.
-  // Lo decide el servidor al pagar, y si vencio, lo dice con claridad.
-  await recargar();
-  if (mia !== vuelta) return;
-  const tienda = estado.comercios.find((x) => x.id === c.comercioId);
-  if (!tienda) {
-    aviso.value = 'Este cobro es de una tienda de otra empresa.';
-    pantalla.value = 'inicio';
+  verCobro({ cobro: leido.token });
+}
+
+function buscarPorCodigo() {
+  const c = codigo.value.replace(/\D/g, '');
+  if (c.length !== 6) {
+    aviso.value = 'Escribe los 6 números que te muestra la tienda.';
     return;
   }
-  destino.value = tienda;
-  pago.value = { monto: c.monto, cobro: token, rubro: c.rubro };
-  pantalla.value = 'confirmar';
+  verCobro({ codigo: c });
 }
 
-function alLeer(leido) {
-  if (leido.tipo === 'cobro') irACobro(leido.token);
-  else irATienda(leido.codigo);
-}
-
-// Llego desde un QR abierto con la camara del celular.
-// Fuentes separadas y de valor simple: asi solo reacciona cuando cambia el
-// enlace o la persona. Con un unico arreglo reaccionaria a cada recarga de
-// datos, y volveria a abrir un cobro ya usado encima de lo que se esta viendo.
-// Espera a saber quien es y cuanto tiene: justo despues de entrar, los datos
-// y el saldo llegan un instante despues que el enlace. Cada enlace se atiende
-// una sola vez, y si no se puede pagar se dice por que.
+// Un cobro abierto con la camara del celular. Espera a saber quien es y
+// cuanto tiene; se atiende una sola vez, y si no se puede pagar se dice por que.
 let enlaceAtendido = '';
 watch(
-  [() => props.codigo, () => props.cobro, () => yo.value?.id, () => enLaRed.value !== null],
-  ([codigo, cobro, id, saldoListo]) => {
-    const enlace = cobro || codigo;
+  [() => props.cobro, () => yo.value?.id, () => enLaRed.value !== null],
+  ([enlace, id, saldoListo]) => {
     if (!enlace || enlace === enlaceAtendido || !id || !saldoListo) return;
     enlaceAtendido = enlace;
-    if (yo.value.estado !== 'verificado') {
-      aviso.value = 'Todavía no puedes pagar: tu empresa aún no te aprueba.';
-    } else if (enLaRed.value.congelado) {
-      aviso.value = 'No se puede pagar: tu vale venció.';
-    } else if (!puedePagar.value) {
-      aviso.value = 'No tienes saldo en tu vale para pagar.';
-    } else if (cobro) irACobro(cobro);
-    else irATienda(codigo);
+    if (yo.value.estado !== 'verificado') aviso.value = 'Todavía no puedes pagar: tu empresa aún no te aprueba.';
+    else if (enLaRed.value.congelado) aviso.value = 'No se puede pagar: tu vale venció.';
+    else if (!puedePagar.value) aviso.value = 'No tienes saldo en tu vale para pagar.';
+    else verCobro({ cobro: enlace });
   },
   { immediate: true },
 );
 
-function continuarMonto() {
-  const monto = montoValido(pago.value.monto);
-  if (!monto) {
-    aviso.value = 'Escribe cuánto vas a pagar. Por ejemplo: 18,50';
-    return;
-  }
-  aviso.value = '';
-  pago.value.monto = monto;
-  pantalla.value = 'confirmar';
-}
-
-// Montos grandes piden el PIN: si alguien toma el celular desbloqueado, no
-// puede vaciar el vale de golpe. Los pequenos, como en Yape, solo confirmar.
-const necesitaPin = computed(() => Number(pago.value.monto) > UMBRAL_PIN);
-
-const rubroCubierto = computed(() => !programa.value
-  || (programa.value.rubros ?? []).includes(pago.value.rubro ?? destino.value?.rubro));
+const necesitaPin = computed(() => Boolean(cobro.value?.requierePin));
+const alcanza = computed(() => !cobro.value || Number(enLaRed.value?.saldo ?? 0) >= Number(cobro.value.monto));
 
 async function confirmar() {
   aviso.value = '';
   pantalla.value = 'pagando';
   try {
     const r = await api.pagar({
-      ...(pago.value.cobro
-        ? { cobro: pago.value.cobro }
-        : { codigo: destino.value.codigo_corto, monto: pago.value.monto }),
+      cobro: cobro.value.cobro,
       ...(necesitaPin.value ? { pin: pin.value } : {}),
     });
     resultado.value = r;
@@ -240,7 +200,7 @@ const motivo = computed(() => {
 
 function escucharResultado() {
   if (resultado.value?.pagado) {
-    hablar(`Pagaste ${enPalabras(pago.value.monto)} a ${destino.value.nombre}. `
+    hablar(`Pagaste ${enPalabras(cobro.value.monto)} a ${cobro.value.comercio.nombre}. `
       + `Te quedan ${enPalabras(enLaRed.value?.saldo ?? 0)}.`);
   } else {
     hablar(`No se pudo pagar. ${motivo.value} No se te cobró nada.`);
@@ -273,11 +233,9 @@ function escucharResultado() {
         </div>
         <div v-else-if="sinValeAun" class="aviso ok">
           <strong>Tu registro fue aprobado</strong>
-          Pronto tu empresa te entregará el vale. Lo verás aquí.
+          Cuando tu empresa te entregue el vale, lo verás aquí.
         </div>
 
-        <!-- El vale solo se muestra a quien esta aprobado: pendiente, rechazado o
-             de baja, ya lo dice el aviso de arriba. -->
         <template v-if="yo.estado !== 'verificado' || sinValeAun" />
         <div v-else-if="enLaRed" :class="['vale', { congelado: enLaRed.congelado }]">
           <span>{{ enLaRed.congelado ? 'Tu vale venció' : (programa?.nombre ?? 'Tu vale') }}</span>
@@ -297,12 +255,12 @@ function escucharResultado() {
         <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
 
         <template v-if="puedePagar">
-          <button class="principal" @click="pantalla = 'escanear'">
-            <Icono nombre="camara" :tamano="30" /> Pagar con QR
+          <button class="principal" @click="abrirPagar">
+            <Icono nombre="qr" :tamano="28" /> Pagar
           </button>
-          <button class="secundario" @click="pantalla = 'codigo'; enfocar()">
-            <Icono nombre="teclado" /> Pagar con código
-          </button>
+          <p class="apagado pequeno ayuda-pagar">
+            En la tienda te muestran un QR con el monto. Tócalo aquí para pagar.
+          </p>
         </template>
         <button v-if="yo.estado === 'verificado' && !sinValeAun && enLaRed" class="enlace" @click="escucharSaldo">
           <Icono nombre="altavoz" /> Escuchar mi saldo
@@ -324,62 +282,44 @@ function escucharResultado() {
       </section>
     </div>
 
-    <!-- ============ ESCANEAR ============ -->
-    <section v-else-if="pantalla === 'escanear'" class="tarjeta">
-      <Escaner
-        busca="pago"
-        @leido="alLeer"
-        @escribir="pantalla = 'codigo'; enfocar()"
-        @cancelar="reiniciar" />
-    </section>
-
-    <!-- ============ ESCRIBIR EL CODIGO ============ -->
-    <section v-else-if="pantalla === 'codigo'" class="tarjeta">
+    <!-- ============ PAGAR: escanear o escribir el codigo ============ -->
+    <section v-else-if="pantalla === 'pagar'" class="tarjeta">
       <button class="enlace atras" @click="reiniciar"><Icono nombre="atras" /> Atrás</button>
-      <form @submit.prevent="irATienda(codigoEscrito)">
-        <label for="cod" class="pregunta">Escribe el código de la tienda</label>
-        <p class="apagado">Son 6 números. Están debajo de su QR, o te los dicen en caja.</p>
+      <p class="pregunta">{{ hayCamara ? 'Escanea el QR de la tienda' : 'Escribe el código del cobro' }}</p>
+      <Escaner v-if="hayCamara" etiqueta="Cámara para escanear el QR de la tienda" @leido="alLeerQr" @sin-camara="hayCamara = false" />
+      <form @submit.prevent="buscarPorCodigo">
+        <label for="codigo-cobro">{{ hayCamara ? 'O escribe los 6 números que están debajo del QR' : 'Son los 6 números que te muestra la tienda, debajo del QR' }}</label>
         <input
-          id="cod" ref="campo" v-model="codigoEscrito" class="numero-grande"
-          inputmode="numeric" maxlength="7" autocomplete="off" placeholder="000 000" required>
+          id="codigo-cobro" ref="campoCodigo" v-model="codigo" class="numero-grande"
+          inputmode="numeric" maxlength="7" autocomplete="off" placeholder="000 000">
         <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-        <button class="principal">Continuar</button>
-      </form>
-    </section>
-
-    <!-- ============ CUANTO ============ -->
-    <section v-else-if="pantalla === 'monto'" class="tarjeta">
-      <button class="enlace atras" @click="reiniciar"><Icono nombre="atras" /> Atrás</button>
-      <p class="destino"><Icono nombre="tienda" /> {{ destino.nombre }}</p>
-      <form @submit.prevent="continuarMonto">
-        <label for="mon" class="pregunta">¿Cuánto vas a pagar?</label>
-        <div class="campo-monto">
-          <span aria-hidden="true">S/</span>
-          <input
-            id="mon" ref="campo" v-model="pago.monto" class="numero-grande"
-            inputmode="decimal" autocomplete="off" placeholder="0,00" required>
-        </div>
-        <p v-if="enLaRed" class="apagado">Tienes {{ soles(enLaRed.saldo) }}</p>
-        <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-        <button class="principal">Continuar</button>
+        <button class="principal" :disabled="buscando">{{ buscando ? 'Buscando…' : 'Continuar' }}</button>
       </form>
     </section>
 
     <!-- ============ CONFIRMAR ============ -->
     <section v-else-if="pantalla === 'confirmar'" class="tarjeta confirmacion">
       <p class="pregunta">¿Pagar?</p>
-      <p class="monto-grande">{{ soles(pago.monto) }}</p>
-      <p class="destino">a {{ destino.nombre }}</p>
+      <p class="monto-grande">{{ soles(cobro.monto) }}</p>
+      <p class="destino">a {{ cobro.comercio.nombre }}</p>
       <p class="apagado">
-        {{ RUBROS[pago.rubro] ?? '' }}<template v-if="destino.distrito"> · {{ destino.distrito }}</template>
+        {{ RUBROS[cobro.rubro] ?? '' }}<template v-if="cobro.comercio.distrito"> · {{ cobro.comercio.distrito }}</template>
       </p>
 
-      <div v-if="!rubroCubierto" class="aviso no" role="alert">
-        <strong>Tu vale no sirve para {{ (RUBROS[pago.rubro] ?? '').toLowerCase() }}</strong>
-        Solo se puede usar en {{ rubrosDelPrograma }}.
+      <div v-if="cobro.yaPagado" class="aviso no" role="alert">
+        <strong>Este cobro ya fue pagado</strong>
+        Pide a la tienda que genere otro.
+      </div>
+      <div v-else-if="!cobro.cubierto" class="aviso no" role="alert">
+        <strong>Tu vale no sirve en esta tienda</strong>
+        Es de {{ (RUBROS[cobro.rubro] ?? '').toLowerCase() }}, y tu vale solo se puede usar en {{ rubrosDelPrograma }}.
+      </div>
+      <div v-else-if="!alcanza" class="aviso no" role="alert">
+        <strong>No te alcanza</strong>
+        Tienes {{ soles(enLaRed?.saldo ?? 0) }} en tu vale.
       </div>
 
-      <form v-if="rubroCubierto" @submit.prevent="confirmar">
+      <form v-else @submit.prevent="confirmar">
         <template v-if="necesitaPin">
           <p class="apagado">Es más de S/ {{ UMBRAL_PIN }}: para cuidarte, escribe tu PIN.</p>
           <Pin v-model="pin" id="pin-pagar" />
@@ -390,7 +330,7 @@ function escucharResultado() {
         </button>
       </form>
       <button class="secundario" @click="reiniciar">
-        <Icono nombre="x" /> {{ rubroCubierto ? 'No, cancelar' : 'Volver' }}
+        <Icono nombre="x" /> {{ cobro.cubierto && !cobro.yaPagado && alcanza ? 'No, cancelar' : 'Volver' }}
       </button>
     </section>
 
@@ -405,8 +345,8 @@ function escucharResultado() {
     <section v-else-if="pantalla === 'hecho'" class="tarjeta resultado ok" role="status">
       <div class="sello ok"><Icono nombre="check" :tamano="56" /></div>
       <p class="titulo-resultado">¡Pago hecho!</p>
-      <p class="monto-grande">{{ soles(pago.monto) }}</p>
-      <p class="destino">a {{ destino.nombre }}</p>
+      <p class="monto-grande">{{ soles(cobro.monto) }}</p>
+      <p class="destino">a {{ cobro.comercio.nombre }}</p>
       <p v-if="enLaRed">Te quedan <b>{{ soles(enLaRed.saldo) }}</b></p>
       <button class="principal" @click="reiniciar">Listo</button>
       <button class="enlace" @click="escucharResultado"><Icono nombre="altavoz" /> Escuchar</button>

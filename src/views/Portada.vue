@@ -21,7 +21,7 @@ import Marca from '../Marca.vue';
 import Pin from '../Pin.vue';
 
 // Si llego desde un QR de pago sin haber entrado, entra como trabajador.
-const vieneDePagar = /^#\/(pagar|cobro)\//.test(window.location.hash);
+const vieneDePagar = /^#\/cobro\//.test(window.location.hash);
 
 const modo = ref('entrar');          // entrar | nueva
 const perfil = ref('trabajador');    // trabajador | tienda | empresa

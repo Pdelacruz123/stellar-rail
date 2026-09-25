@@ -58,6 +58,8 @@ export const api = {
   entregar: (id, beneficiarios) => pedir('programas', 'POST', { accion: 'entregar', id, beneficiarios }),
   vencer: (id) => pedir('programas', 'POST', { accion: 'vencer', id }),
 
+  /** El cobro que se va a pagar, por su QR ({cobro}) o su codigo de 6 numeros ({codigo}). */
+  verCobro: (datos) => pedir('pagos', 'POST', { accion: 'ver', ...datos }),
   pagar: (datos) => pedir('pagos', 'POST', datos),
   eventos: () => pedir('eventos'),
 };
