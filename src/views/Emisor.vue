@@ -251,9 +251,9 @@ const porEntregar = computed(() => (programa.value
 
 const seccion = ref('resumen');
 const SECCIONES = computed(() => [
-  { clave: 'resumen', nombre: 'Resumen', icono: 'resumen', cuenta: pendientes.value.length },
+  { clave: 'resumen', nombre: 'Inicio', icono: 'resumen', cuenta: pendientes.value.length },
   { clave: 'programa', nombre: 'Programa', icono: 'vale' },
-  { clave: 'personas', nombre: 'Personas', icono: 'personas' },
+  { clave: 'personas', nombre: 'Trabajadores', icono: 'personas' },
   { clave: 'bodegas', nombre: 'Bodegas', icono: 'tienda' },
   { clave: 'invitar', nombre: 'Invitar', icono: 'enviar' },
   { clave: 'historial', nombre: 'Historial', icono: 'historial' },
@@ -289,27 +289,30 @@ const irA = (r) => { window.location.hash = r; };
 </script>
 
 <template>
-  <div class="panel-emp">
-    <nav class="lateral" aria-label="Secciones de la empresa">
-      <Marca :tamano="28" />
-      <button
-        v-for="s in SECCIONES" :key="s.clave" class="nav-emp"
-        :aria-current="seccion === s.clave ? 'page' : undefined" :title="s.nombre"
-        @click="irSeccion(s.clave)">
-        <Icono :nombre="s.icono" :tamano="20" />
-        <span class="nav-texto">{{ s.nombre }}</span>
-        <span v-if="s.cuenta" class="cuenta-n" :aria-label="`${s.cuenta} por aprobar`">{{ s.cuenta }}</span>
-      </button>
-      <div class="lateral-pie">
-        <span class="red">Red de pruebas</span>
-        <span>{{ empresa }}</span>
-        <template v-if="!enMarco">
-          <button v-if="estado.yo?.demo" class="suave chico" @click="irA('#/tres')">Vista en vivo</button>
-          <button class="suave chico" @click="salir()"><Icono nombre="salir" :tamano="18" /> Salir</button>
-          <button class="suave chico" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
-        </template>
+  <div class="emp">
+    <!-- Cabecera clara con pestanas: cabe igual en una computadora, en el
+         marco de la vista en vivo y en un celular, donde se desliza. -->
+    <header class="emp-barra">
+      <div class="emp-barra-dentro">
+        <Marca :tamano="28" />
+        <span class="emp-nombre">{{ empresa }}</span>
+        <span v-if="estado.yo?.demo" class="insignia">Prueba</span>
+        <div v-if="!enMarco" class="emp-cuenta">
+          <button v-if="estado.yo?.demo" class="suave chico ocultar-movil" @click="irA('#/tres')">Vista en vivo</button>
+          <button class="suave chico" @click="salir()">Salir</button>
+        </div>
       </div>
-    </nav>
+      <nav class="emp-pestanas" aria-label="Secciones de la empresa">
+        <button
+          v-for="s in SECCIONES" :key="s.clave" class="emp-pestana"
+          :aria-current="seccion === s.clave ? 'page' : undefined"
+          @click="irSeccion(s.clave)">
+          <Icono :nombre="s.icono" :tamano="18" />
+          {{ s.nombre }}
+          <span v-if="s.cuenta" class="cuenta-n" :aria-label="`${s.cuenta} por aprobar`">{{ s.cuenta }}</span>
+        </button>
+      </nav>
+    </header>
 
     <main class="emp-contenido">
       <div v-if="estado.error" class="aviso no" role="alert">{{ estado.error }}</div>
@@ -318,7 +321,7 @@ const irA = (r) => { window.location.hash = r; };
       <template v-if="seccion === 'resumen'">
         <div class="emp-titulo">
           <div>
-            <h1>{{ programa ? programa.nombre : 'Resumen' }}</h1>
+            <h1>{{ programa ? programa.nombre : 'Inicio' }}</h1>
             <p>
               {{ trabajadores }} {{ trabajadores === 1 ? 'trabajador' : 'trabajadores' }} ·
               {{ bodegas }} {{ bodegas === 1 ? 'bodega afiliada' : 'bodegas afiliadas' }}
@@ -475,7 +478,7 @@ const irA = (r) => { window.location.hash = r; };
 
       <!-- ================= PERSONAS ================= -->
       <template v-else-if="seccion === 'personas'">
-        <div class="emp-titulo"><div><h1>Personas</h1><p>Tarjetas, PIN nuevo y bajas.</p></div></div>
+        <div class="emp-titulo"><div><h1>Trabajadores</h1><p>Tarjetas, PIN nuevo y bajas.</p></div></div>
         <section class="tarjeta">
           <p v-if="!estado.beneficiarios.length" class="apagado">Todavía nadie se registró. Invítalos desde «Invitar».</p>
           <div v-for="b in estado.beneficiarios" :key="`b-${b.id}`" class="fila">
@@ -610,10 +613,9 @@ const irA = (r) => { window.location.hash = r; };
         <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="empresa" />
       </div>
 
-      <div v-if="!enMarco" class="acciones solo-movil" style="margin-top:20px">
-        <button class="suave chico" @click="salir()"><Icono nombre="salir" :tamano="18" /> Salir</button>
-        <button class="suave chico" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
-      </div>
+      <p v-if="!enMarco" style="margin-top:20px">
+        <button class="enlace" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
+      </p>
       <p class="apagado pequeno pie-app">
         Cada operación queda en el registro público de Stellar (red de pruebas) y se verifica con su comprobante.
         La verificación de identidad es simulada.
