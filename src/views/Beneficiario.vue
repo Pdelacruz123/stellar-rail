@@ -39,7 +39,12 @@ const programa = computed(() => programaVigente());
 const rubrosDelPrograma = computed(() => (programa.value?.rubros ?? [])
   .map((r) => RUBROS[r] ?? r).join(', ').toLowerCase());
 const afiliados = computed(() => estado.comercios.filter((c) => c.afiliado));
-const puedePagar = computed(() => yo.value?.estado === 'verificado' && !enLaRed.value?.congelado);
+// Aprobado, pero la empresa todavia no le entrego el vale.
+const sinValeAun = computed(() => yo.value?.estado === 'verificado' && enLaRed.value
+  && !enLaRed.value.congelado && Number(enLaRed.value.saldo) === 0 && !programa.value?.entregados);
+// Solo se ofrece pagar si hay con que: sin saldo, los botones no sirven.
+const puedePagar = computed(() => yo.value?.estado === 'verificado' && !enLaRed.value?.congelado
+  && Number(enLaRed.value?.saldo ?? 0) > 0);
 
 // --- Saldo, leido de la red cada vez. Nunca lo guardamos. -------------------
 
@@ -249,18 +254,19 @@ function escucharResultado() {
           <strong>Ya no recibes vales de esta empresa</strong>
           Tu empresa te dio de baja. Si crees que es un error, consulta con Recursos Humanos.
         </div>
-        <div v-else-if="enLaRed?.autorizado && Number(enLaRed.saldo) === 0 && !programa?.entregados" class="aviso espera">
-          <strong>Ya estás aprobado</strong>
-          Pronto tu empresa te entregará el vale.
+        <div v-else-if="sinValeAun" class="aviso ok">
+          <strong>Tu registro fue aprobado</strong>
+          Pronto tu empresa te entregará el vale. Lo verás aquí.
         </div>
 
         <!-- El vale solo se muestra a quien esta aprobado: pendiente, rechazado o
              de baja, ya lo dice el aviso de arriba. -->
-        <template v-if="yo.estado !== 'verificado'" />
+        <template v-if="yo.estado !== 'verificado' || sinValeAun" />
         <div v-else-if="enLaRed" :class="['vale', { congelado: enLaRed.congelado }]">
           <span>{{ enLaRed.congelado ? 'Tu vale venció' : (programa?.nombre ?? 'Tu vale') }}</span>
           <b>{{ soles(enLaRed.saldo) }}</b>
-          <span v-if="!enLaRed.congelado && programa">Úsalo hasta el {{ fecha(programa.vence_el) }}</span>
+          <span v-if="!enLaRed.congelado && Number(enLaRed.saldo) === 0">Ya usaste todo tu vale</span>
+          <span v-else-if="!enLaRed.congelado && programa">Úsalo hasta el {{ fecha(programa.vence_el) }}</span>
           <span v-else-if="enLaRed.congelado">Ya no se puede usar</span>
           <img class="vale-logo" src="/logo.svg" alt="">
         </div>
@@ -281,12 +287,12 @@ function escucharResultado() {
             <Icono nombre="teclado" /> Pagar con código
           </button>
         </template>
-        <button v-if="yo.estado === 'verificado'" class="enlace" @click="escucharSaldo">
+        <button v-if="yo.estado === 'verificado' && !sinValeAun && enLaRed" class="enlace" @click="escucharSaldo">
           <Icono nombre="altavoz" /> Escuchar mi saldo
         </button>
       </section>
 
-      <section v-if="yo.estado === 'verificado'" class="tarjeta">
+      <section v-if="yo.estado === 'verificado' && !enLaRed?.congelado" class="tarjeta">
         <h2><Icono nombre="tienda" /> Dónde usar tu vale</h2>
         <p v-if="programa" class="apagado">Sirve para: {{ rubrosDelPrograma }}.</p>
         <p v-if="!afiliados.length" class="apagado">Todavía no hay tiendas afiliadas.</p>
