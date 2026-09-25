@@ -14,10 +14,10 @@
  *   - Minimarket La Esquina, para NO afiliar y ver el rechazo de la red.
  *   - Electro Hogar, de electrodomesticos, para ver el control de rubros.
  *
- * Devuelve tambien una credencial por persona: la usa la vista de tres
- * pantallas, que abre varias sesiones a la vez en la misma pestana.
+ * No deja la sesion iniciada: quien prueba entra con la cuenta que quiera,
+ * como en cualquier pagina con cuentas.
  */
-import { credencialDe, iniciarSesion, json, manejar, riel } from '../lib/http.js';
+import { json, manejar, riel } from '../lib/http.js';
 import { altaEnLote } from '../lib/altas.js';
 import {
   celularAlAzar, cifrar, contrasenaAlAzar, numeroDeTarjeta, pinAlAzar,
@@ -97,7 +97,6 @@ export default manejar({
         celular,
         pin,
         perfil: p.perfil,
-        credencial: credencialDe(usuario),
       });
     }
 
@@ -110,11 +109,8 @@ export default manejar({
     }
     personas.find((p) => p.clave === 'rosa').tarjeta = tarjeta.numero;
 
-    // Este navegador entra como la empresa.
-    iniciarSesion(req, res, empresa);
-
     return json(res, 201, {
-      empresa: { nombre: EMPRESA, correo, contrasena, credencial: credencialDe(empresa) },
+      empresa: { nombre: EMPRESA, correo, contrasena },
       personas,
       transaccion: alta.evento,
     });
