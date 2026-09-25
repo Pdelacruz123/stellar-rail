@@ -12,12 +12,18 @@
  *
  * Lo usan el trabajador (lee el QR de la tienda) y la tienda (lee la
  * tarjeta impresa de quien no tiene smartphone).
+ *
+ * En la vista en vivo del espacio de prueba no se usa la camara: una
+ * computadora no puede apuntarla a su propia pantalla. El visor muestra lo
+ * que tiene delante (el QR de la tienda de al lado, o la tarjeta que se
+ * acerco) y se escanea con un toque.
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import QrScanner from 'qr-scanner';
 import { leerQr } from './enlaces.js';
 import { cercano, enMarco } from './marco.js';
 import Icono from './Icono.vue';
+import Qr from './Qr.vue';
 
 const props = defineProps({
   // 'pago': el QR de una tienda. 'tarjeta': la tarjeta impresa de un trabajador.
@@ -32,6 +38,7 @@ const aviso = ref('');
 const pegando = ref(false);
 const pegado = ref('');
 let escaner = null;
+let desmontado = false;
 
 /** Comprueba lo leido. Devuelve true si sirvio. */
 function probar(texto) {
@@ -59,9 +66,8 @@ function entregar(leido) {
   return true;
 }
 
-let desmontado = false;
-
 onMounted(async () => {
+  if (enMarco) return;
   const hayCamara = await QrScanner.hasCamera();
   // Mientras se buscaba la camara, la persona pudo ya escanear con otra
   // opcion o cancelar: entonces no queda video donde mostrarla.
@@ -108,45 +114,43 @@ function usarPegado() {
   probar(pegado.value);
 }
 
-// Vista de tres pantallas: lo que la otra pantalla puso al alcance.
-const alAlcance = computed(() => (esTarjeta.value ? cercano.tarjeta : cercano.qr));
-const usarAlAlcance = () => probar(alAlcance.value);
+// Vista en vivo: lo que el visor tiene delante.
+const delante = computed(() => (esTarjeta.value ? cercano.tarjeta : cercano.qr));
 </script>
 
 <template>
   <div class="escaner">
-    <!-- En la demostracion en una sola computadora: la camara no puede
-         apuntar a la pantalla de al lado, asi que se "escanea" con un clic. -->
-    <div v-if="enMarco" class="aviso espera">
-      <strong>{{ esTarjeta ? 'Demostración: la tarjeta' : 'Demostración: el QR de la tienda' }}</strong>
-      <template v-if="alAlcance">
-        {{ esTarjeta ? 'Rosa acercó su tarjeta.' : 'La tienda de al lado está mostrando un QR.' }}
-        <button class="principal" @click="usarAlAlcance">
-          <Icono nombre="qr" :tamano="28" />
-          {{ esTarjeta ? 'Escanear la tarjeta' : 'Escanear el QR de la tienda' }}
-        </button>
-      </template>
-      <template v-else>
-        {{ esTarjeta
-          ? 'En la página, toca «Pasar la tarjeta por la tienda».'
-          : 'Primero, en la pantalla de la tienda, muestra un QR para cobrar.' }}
-      </template>
-    </div>
+    <p class="pregunta">{{ esTarjeta ? 'Escanea la tarjeta del cliente' : 'Escanea el QR de la tienda' }}</p>
 
-    <template v-if="!problema">
-      <p class="pregunta">{{ esTarjeta ? 'Apunta a la tarjeta del cliente' : 'Apunta al código QR de la tienda' }}</p>
-      <div class="visor">
+    <!-- Vista en vivo: el visor muestra lo que tiene delante. -->
+    <template v-if="enMarco">
+      <div class="visor visor-simulado">
+        <div v-if="delante" class="visor-codigo">
+          <Qr :texto="delante" :tamano="esTarjeta ? 150 : 190" nivel="M" alt="Código frente a la cámara" />
+          <span v-if="esTarjeta" class="visor-numero">{{ delante }}</span>
+        </div>
+        <p v-else class="visor-vacio">Apunta la cámara al código</p>
+        <span class="visor-esquinas" aria-hidden="true" />
+        <span v-if="delante" class="visor-linea" aria-hidden="true" />
+      </div>
+      <button class="principal" :disabled="!delante" @click="probar(delante)">
+        <Icono nombre="camara" :tamano="26" /> Escanear
+      </button>
+    </template>
+
+    <template v-else>
+      <div v-if="!problema" class="visor">
         <video ref="video" muted playsinline aria-label="Imagen de la cámara" />
       </div>
+      <div v-else class="aviso no" role="alert">
+        <strong>{{ problema === 'permiso' ? 'No pudimos usar la cámara' : 'No encontramos una cámara' }}</strong>
+        Puedes subir una foto del código o escribirlo.
+      </div>
     </template>
-    <div v-else-if="!enMarco" class="aviso no" role="alert">
-      <strong>{{ problema === 'permiso' ? 'No pudimos usar la cámara' : 'No encontramos una cámara' }}</strong>
-      Puedes subir una foto del código o escribirlo.
-    </div>
     <p v-if="aviso" class="aviso espera" role="status">{{ aviso }}</p>
 
     <label class="boton secundario subir">
-      <Icono nombre="camara" /> Subir foto del QR
+      <Icono nombre="imprimir" /> Subir foto del QR
       <input type="file" accept="image/*" class="oculto" @change="subirFoto">
     </label>
 
