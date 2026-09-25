@@ -55,6 +55,22 @@ export default manejar({
       const pendientes = verificados.filter((b) => reservados.includes(b.id));
 
       const transacciones = [];
+
+      // Si un programa anterior vencio, estas cuentas quedaron congeladas y
+      // la red rechazaria la entrega. Se descongelan primero, todas juntas.
+      const congeladas = [];
+      for (const b of pendientes) {
+        if ((await r.consultarSaldo(b.cuenta_publica)).congelado) congeladas.push(b);
+      }
+      for (const grupo of trozos(congeladas, MAX_OPERACIONES)) {
+        const tx = await r.descongelarVarias(grupo.map((b) => b.cuenta_publica));
+        transacciones.push(await anotar(yo.sesion, 'descongelar', tx, r));
+        if (!tx.ok) {
+          await db.liberarEntregas(programa.id, pendientes.map((b) => b.id));
+          return json(res, 502, { error: tx.mensaje, transacciones });
+        }
+      }
+
       // Una operacion por beneficiario: caben 100 por transaccion.
       for (const grupo of trozos(pendientes, MAX_OPERACIONES)) {
         const ids = grupo.map((b) => b.id);
@@ -108,6 +124,11 @@ export default manejar({
     if (!nombre) return json(res, 400, { error: 'Falta el nombre del programa.' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(datos.venceEl ?? ''))) {
       return json(res, 400, { error: 'La fecha de vencimiento debe ser AAAA-MM-DD.' });
+    }
+    // Un programa que ya vencio no tiene sentido: la fecha es de Lima.
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    if (datos.venceEl < hoy) {
+      return json(res, 400, { error: 'La fecha de vencimiento no puede ser anterior a hoy.' });
     }
     const tipo = datos.tipo ?? 'alimentaria';
     if (!esTipo(tipo)) return json(res, 400, { error: 'Ese tipo de programa no existe.' });
