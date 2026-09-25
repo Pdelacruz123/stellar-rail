@@ -4,11 +4,16 @@
  * Un pago que no se hace NO es un error aqui: llega con estado 200 y
  * `pagado: false`, y `controlDe` dice quien lo freno: la red o la aplicacion.
  */
+import { credencialDelMarco } from './marco.js';
 
 async function pedir(ruta, metodo = 'GET', cuerpo) {
+  const cabeceras = {};
+  if (cuerpo) cabeceras['content-type'] = 'application/json';
+  // Dentro de la vista de tres pantallas, cada marco lleva su propia sesion.
+  if (credencialDelMarco) cabeceras['x-stellarrail-credencial'] = credencialDelMarco;
   const r = await fetch(`/api/${ruta}`, {
     method: metodo,
-    headers: cuerpo ? { 'content-type': 'application/json' } : undefined,
+    headers: cabeceras,
     body: cuerpo ? JSON.stringify(cuerpo) : undefined,
     credentials: 'same-origin',
   });
@@ -22,14 +27,28 @@ async function pedir(ruta, metodo = 'GET', cuerpo) {
   return datos;
 }
 
+const sesion = (accion, datos = {}) => pedir('sesion', 'POST', { accion, ...datos });
+
 export const api = {
   sesion: () => pedir('sesion'),
-  unirse: (token) => pedir('sesion', 'POST', { token }),
+  entrar: (identificador, secreto) => sesion('entrar', { identificador, secreto }),
+  salir: () => sesion('salir'),
+  cerrarTodas: () => sesion('cerrarTodas'),
+  registrarEmpresa: (datos) => sesion('registrarEmpresa', datos),
+  verInvitacion: (token) => sesion('invitacion', { token }),
+  verRestablecer: (token) => sesion('verRestablecer', { token }),
+  restablecer: (token, pin) => sesion('restablecer', { token, pin }),
+  crearDemo: () => pedir('demo', 'POST'),
 
   beneficiarios: () => pedir('beneficiarios'),
-  registrarBeneficiario: (nombre) => pedir('beneficiarios', 'POST', { nombre }),
+  registrarBeneficiario: (datos) => pedir('beneficiarios', 'POST', datos),
   verificarBeneficiario: (id, aprobar) =>
     pedir('beneficiarios', 'POST', { accion: 'verificar', id, aprobar }),
+  darDeBaja: (id) => pedir('beneficiarios', 'POST', { accion: 'baja', id }),
+  darTarjeta: (id) => pedir('beneficiarios', 'POST', { accion: 'tarjeta', id }),
+  anularTarjeta: (id) => pedir('beneficiarios', 'POST', { accion: 'anularTarjeta', id }),
+  /** @param {'beneficiarios'|'comercios'} tabla */
+  nuevoPin: (tabla, id) => pedir(tabla, 'POST', { accion: 'restablecer', id }),
 
   comercios: () => pedir('comercios'),
   registrarComercio: (datos) => pedir('comercios', 'POST', datos),

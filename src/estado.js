@@ -7,10 +7,12 @@
  */
 import { reactive } from 'vue';
 import { api } from './api.js';
+import { avisarCambio } from './marco.js';
 
 export const estado = reactive({
   cargando: true,
-  yo: null,            // { sesion, rol, id, emisor, activo, horizon, invitaciones? }
+  // { anonimo, sesion, rol, id, nombre, empresa, demo, emisor, activo, horizon, invitaciones? }
+  yo: null,
   beneficiarios: [],
   comercios: [],
   programas: [],
@@ -25,8 +27,10 @@ const QUE_VE = {
   comercio: ['comercios'],
 };
 
+export const conSesion = () => Boolean(estado.yo && !estado.yo.anonimo);
+
 export async function recargar() {
-  const lista = QUE_VE[estado.yo?.rol] ?? [];
+  const lista = conSesion() ? QUE_VE[estado.yo.rol] ?? [] : [];
   const resultados = await Promise.all(lista.map((k) => api[k]()));
   lista.forEach((k, i) => { estado[k] = resultados[i][k]; });
 }
@@ -35,19 +39,22 @@ export async function refrescarYo() {
   estado.yo = await api.sesion();
 }
 
+/** Tras entrar o salir: el perfil nuevo y sus datos, sin restos del anterior. */
+export async function ponerPerfil(perfil) {
+  estado.yo = perfil;
+  estado.beneficiarios = [];
+  estado.comercios = [];
+  estado.programas = [];
+  estado.eventos = [];
+  estado.error = null;
+  await recargar();
+}
+
 export async function arrancar() {
   estado.cargando = true;
   estado.error = null;
   try {
-    // Un enlace de invitacion: #/unirse/<token>
-    const invitacion = /^#\/unirse\/(.+)$/.exec(window.location.hash);
-    if (invitacion) {
-      estado.yo = await api.unirse(decodeURIComponent(invitacion[1]));
-      // Se reemplaza el enlace: si se recarga la pagina, no se vuelve a canjear.
-      window.location.replace(`#/${estado.yo.rol}`);
-    } else {
-      await refrescarYo();
-    }
+    await refrescarYo();
     await recargar();
   } catch (e) {
     estado.error = e.message;
@@ -56,14 +63,19 @@ export async function arrancar() {
   }
 }
 
-/** Ejecuta una accion, recarga y deja el error a mano si falla. */
+/**
+ * Ejecuta una accion, recarga y deja el error a mano si falla. Si la sesion
+ * se cerro (por ejemplo, desde otro dispositivo), vuelve a la portada.
+ */
 export async function accion(fn) {
   estado.error = null;
   try {
     const r = await fn();
     await recargar();
+    avisarCambio();
     return r;
   } catch (e) {
+    if (e.datos?.sinSesion) await ponerPerfil(await api.sesion());
     estado.error = e.message;
     throw e;
   }
