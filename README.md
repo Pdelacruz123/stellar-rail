@@ -127,12 +127,11 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **Diseño responsivo**: cada pantalla tiene su versión de computadora y de celular.
 - **Acceso según el riesgo**: la empresa entra con correo y contraseña; trabajador y tienda, con su celular y un PIN de 4 números. PIN cifrado con scrypt, bloqueo de 15 minutos tras 5 intentos fallidos y cierre de sesión en todos los dispositivos. La empresa invita por enlace o QR.
 - **Sin smartphone**: la empresa registra a la persona en Recursos Humanos (ella escribe su PIN) y le imprime una tarjeta con QR. La tienda la escanea y el trabajador marca su PIN en el equipo de la tienda, con un tope de S/ 100 al día. La empresa la puede anular.
-- **Alternativas al QR**: subir una foto del código, pegar el enlace, escribir el código de 6 números o recibir el cobro por WhatsApp (enlace `wa.me`, sin servicios de pago).
 - **Gestión**: dar de baja a un trabajador (congela y anula su saldo en una transacción) y restablecer su PIN con un enlace de un solo uso, sin SMS.
-- **Cobro con QR pensado para quien no se maneja bien con el celular**: la bodega pone el monto, el trabajador escanea desde la app, como en Yape, y solo confirma. El cobro va firmado por el servidor, caduca a los 10 minutos y no se puede pagar dos veces. También hay un QR fijo imprimible como cartel, y un código de 6 números para cuando la cámara falla.
+- **Cobro como el de las tarjetas de alimentación con QR**: la tienda escribe el monto y muestra un QR con un código de 6 números debajo. El trabajador toca **Pagar**, escanea el QR o escribe el código, ve a quién le paga y cuánto, y confirma. El cobro va firmado por el servidor, caduca a los 10 minutos y no se puede pagar dos veces.
 - **Aviso en vivo** a la bodega cuando le pagan, en pantalla y en voz alta ("Recibiste 18 soles con 50 céntimos").
-- **Entregas sin duplicados**: dos clics en "Entregar" no emiten dos veces el vale.
-- **Rubros por programa**, declarados por el comercio en el memo de cada transacción.
+- **Entregas a quien la empresa elija**: un bono puede ser solo para algunos trabajadores. Dos clics en "Entregar" no emiten dos veces el vale.
+- **Rubros por programa**: cada tienda tiene un rubro fijo desde que la afilian, que viaja en el memo de cada transacción. Que el programa lo cubra lo comprueba la aplicación.
 - **Evidencias 9 a 18**: el ciclo completo ejecutado por la aplicación desplegada.
 
 ## Estado actual
@@ -193,18 +192,18 @@ Para cambiar de persona, sales y entras con otra.
 
 | Persona | Qué representa |
 |---|---|
-| María | Trabajadora con smartphone: paga escaneando el QR de la tienda |
+| María | Trabajadora con smartphone: paga el cobro de la tienda con su QR o su código |
 | Rosa | Trabajadora sin smartphone: paga con una tarjeta impresa y su PIN |
 | Bodega Don Julio | Tienda para afiliar |
 | Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
 | Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
 
 1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar; deja a La Esquina sin aprobar. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa y entrega el vale.
-2. **Tiendas:** entra como cada una y anota su código de 6 números (en «QR fijo»; La Esquina, sin afiliar, lo muestra en su pantalla de espera).
-3. **María:** toca **Pagar con código**, escribe el de Don Julio y un monto, y confirma. En un celular, escanearía el QR de la tienda.
-4. **María** paga en La Esquina: **lo rechaza la red** (`op_not_authorized`), con su comprobante.
-5. **María** intenta pagar en Electro Hogar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
-6. **Don Julio** cobra a Rosa, que no tiene smartphone: **Con tarjeta**, escribe el número de su tarjeta y Rosa marca su PIN en el teclado de la tienda.
+2. **Don Julio:** escribe el monto y toca **Cobrar con QR**. Aparece el QR y, debajo, un código de 6 números.
+3. **María:** toca **Pagar** y escribe ese código (en un celular, escanearía el QR). Ve a quién le paga y cuánto, y confirma. Don Julio ve «Te pagaron» al instante.
+4. **La Esquina** cobra y María paga: **lo rechaza la red** (`op_not_authorized`), con su comprobante.
+5. **Electro Hogar** cobra y María intenta pagar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
+6. **Don Julio** cobra a Rosa, que no tiene smartphone: **El cliente tiene tarjeta**, escribe el número de su tarjeta y Rosa marca su PIN en el teclado de la tienda.
 7. **Empresa:** mira el gasto y el historial, y vence el programa: el saldo se congela y se anula.
 
 Con dos dispositivos se ve también el aviso en vivo: la tienda recibe «Te pagaron» sin recargar. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
@@ -253,7 +252,7 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 
 - **El clawback destruye el saldo.** No lo devuelve como tokens al emisor; el emisor recupera su respaldo en soles, que deja de estar comprometido.
 - **El vencimiento no lo dispara la red.** Stellar no ejecuta tareas programadas. En el MVP lo ejecuta el emisor con un botón.
-- **La red no ve qué se compra.** Stellar controla quién puede tener el vale y dónde se gasta, no el producto: la canasta solo la ve el comercio. Por eso el comercio **declara el rubro** en cada cobro y esa declaración viaja en el memo de la transacción, que es pública. Si declara en falso, la prueba queda registrada, y la sanción, desafiliarlo, sí la hace cumplir la red. Que un programa acepte o no un rubro **lo comprueba la aplicación** en este MVP; hacerlo cumplir en la cadena requiere un contrato Soroban.
+- **La red no ve qué se compra.** Stellar controla quién puede tener el vale y dónde se gasta, no el producto: la canasta solo la ve el comercio. Es igual con las tarjetas de alimentación: restringen por tipo de comercio, y que en caja se cobren solo alimentos es responsabilidad del comercio afiliado. Aquí cada tienda tiene **un rubro fijo, asignado al afiliarla**, que viaja en el memo de cada transacción, que es público. Que un programa cubra o no ese rubro **lo comprueba la aplicación** en este MVP; hacerlo cumplir en la cadena requiere un contrato Soroban. Si una tienda cobra lo que no debe, la sanción, desafiliarla, sí la hace cumplir la red.
 - **Un programa vigente por empresa a la vez.** Todos los vales son el mismo activo, `ALIM`, así que los saldos de dos programas se mezclarían en la misma cuenta. Separarlos exige un activo por programa.
 - **Verificación simulada.** No se procesan datos reales de identidad.
 - **El PIN protege el acceso, no la cuenta en la red.** Las cuentas las custodia el sistema (decisión del MVP); nadie ve su clave. Sin SMS ni correos de verificación: en sus versiones gratuitas solo llegan al desarrollador, así que el PIN nuevo se entrega con un enlace de un solo uso que la empresa comparte por WhatsApp o con un QR.

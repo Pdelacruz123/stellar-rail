@@ -131,7 +131,7 @@ Los dos primeros están reproducidos y verificados en testnet. Un rechazo a nive
 
 ## 5. Datos
 
-Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` y `cobros_usados` (para no emitir ni cobrar dos veces) y `candados` (el turno del emisor).
+Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` y `cobros_usados` (para no emitir ni cobrar dos veces), `cobros_codigos` (el código de 6 números de cada cobro, que vive lo mismo que el cobro) y `candados` (el turno del emisor).
 
 ```sql
 -- El espacio de una empresa. Cada demostracion es un espacio propio, para
@@ -202,7 +202,7 @@ CREATE TABLE comercios (
   distrito        TEXT,
   telefono        TEXT,
   cuenta_publica  TEXT NOT NULL,
-  codigo_corto    TEXT NOT NULL,        -- 6 dígitos para cobrar sin QR
+  codigo_corto    TEXT NOT NULL,        -- código fijo de la tienda; cada cobro trae el suyo
   estado          TEXT NOT NULL DEFAULT 'pendiente',
   hash_verificacion TEXT,
   creado_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -240,11 +240,11 @@ Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de
 | `GET /api/beneficiarios` | La empresa ve a todos, con su celular y su tarjeta; un trabajador, solo a sí mismo | Empresa, trabajador |
 | `POST /api/beneficiarios` | Registrarse con una invitación (nombre, celular y PIN): crea su cuenta y su trustline, en `pendiente` | Invitados, empresa |
 | `POST /api/beneficiarios` `{accion}` | `verificar` (al aprobar **ejecuta `autorizar` en la red**), `baja`, `restablecer`, `tarjeta`, `anularTarjeta` | Empresa |
-| `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro y su código de 6 dígitos | Según el caso |
-| `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: firmado, caduca a los 10 minutos | Tienda |
+| `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro, fijo desde el registro | Según el caso |
+| `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: QR firmado y código de 6 números, caducan a los 10 minutos | Tienda |
 | `GET /api/programas` | Programas del espacio, con sus rubros y su vencimiento | Todos |
-| `POST /api/programas` | Crear, `entregar` o `vencer` | Empresa |
-| `POST /api/pagos` | El trabajador paga un cobro con monto (`{cobro}`) o un QR fijo o código (`{codigo, monto}`), con PIN por encima de S/ 50. La tienda cobra con tarjeta (`{tarjeta, pin, monto}`) | Trabajador, tienda |
+| `POST /api/programas` | Crear, `entregar` a los trabajadores elegidos (`{beneficiarios}`) o `vencer` | Empresa |
+| `POST /api/pagos` | El trabajador abre un cobro, por su QR (`{cobro}`) o su código (`{codigo}`): con `accion:'ver'` recibe el resumen (tienda, monto, si su vale la cubre, si pide PIN); sin ella, paga, con PIN por encima de S/ 50. La tienda cobra con tarjeta (`{tarjeta, pin, monto}`) | Trabajador, tienda |
 | `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
 **Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción se pasaría del límite, además de tener muchos paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7.
@@ -308,7 +308,7 @@ El PIN y la contraseña se guardan cifrados con **scrypt** y una sal por usuario
 
 Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el usuario y su *versión*. Subir la versión invalida todas sus credenciales: así funciona «cerrar sesión en todos mis dispositivos», y también cambiar el PIN o dar de baja.
 
-**Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, y el jurado no podría probarlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos. Guardar el PIN nuevo no inicia sesión: el enlace puede abrirse en el equipo de Recursos Humanos, con la cuenta de la empresa abierta, y no debe cambiarla. Por lo mismo, una invitación abierta con otra cuenta en el equipo avisa y ofrece salir primero.
+**Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, así que quien pruebe la aplicación no podría recibirlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos. Guardar el PIN nuevo no inicia sesión: el enlace puede abrirse en el equipo de Recursos Humanos, con la cuenta de la empresa abierta, y no debe cambiarla. Por lo mismo, una invitación abierta con otra cuenta en el equipo avisa y ofrece salir primero.
 
 La empresa invita con dos enlaces firmados, uno para trabajadores y otro para tiendas. Invitar no aprueba a nadie: el control sigue siendo la verificación, que se ejecuta en la red.
 
@@ -326,10 +326,7 @@ Con smartphone, el PIN se pide solo por encima de S/ 50. Por debajo basta confir
 
 ### Si el QR no se puede escanear
 
-- **Subir una foto** del código, por ejemplo la que llegó por WhatsApp.
-- **Pegar el enlace** del cobro.
-- **Escribir** el código de 6 números de la tienda.
-- La tienda puede **enviar el cobro por WhatsApp** con un enlace `wa.me`, que no necesita la API de WhatsApp Business ni ningún servicio de pago.
+Debajo del QR, la tienda muestra un **código de 6 números** propio de ese cobro. El trabajador lo escribe en **Pagar** y sigue igual: ve el resumen y confirma. Es lo que hacen las tarjetas de alimentación con QR, y basta con una sola alternativa: más opciones confunden a quien menos se maneja con el celular. El código vive lo mismo que el cobro y se puede reutilizar cuando vence.
 
 ### Rubros: lo que la red ve y lo que no
 
@@ -340,31 +337,43 @@ StellarRail lo resuelve en capas, y dice con precisión quién garantiza cada un
 | Qué | Quién lo garantiza |
 |---|---|
 | Dónde se gasta: solo en comercios afiliados | **La red**, con `AUTH_REQUIRED` |
-| Qué rubro declara el comercio en cada cobro | **La red lo registra**: viaja en el memo de la transacción, que es público |
-| Que el programa cubra ese rubro | **La aplicación**, en este MVP. Hacerlo cumplir en la cadena exige Soroban |
-| Sancionar a un comercio que declara en falso | **La red**: desafiliarlo le impide volver a cobrar |
+| El rubro de cada tienda | **La empresa**, al afiliarla. Es fijo: la tienda no lo elige en cada venta |
+| Que quede constancia del rubro | **La red lo registra**: viaja en el memo de la transacción, que es público |
+| Que el programa cubra ese rubro | **La aplicación**, en este MVP, antes de enviar el pago. Hacerlo cumplir en la cadena exige Soroban |
+| Que en caja se cobren solo productos permitidos | **La tienda**, como en las tarjetas de alimentación: es una obligación del comercio afiliado |
+| Sancionar a una tienda que incumple | **La red**: desafiliarla le impide volver a cobrar |
+
+Así funcionan las tarjetas de alimentación: la red de pagos restringe por comercio afiliado y por tipo de comercio, y la separación de productos en un supermercado queda en manos del cajero. StellarRail replica ese reparto y dice con precisión qué parte hace cumplir la red.
 
 El tipo de programa fija los rubros posibles. En la **prestación alimentaria** de la Ley 28051 solo cabe alimentos, porque la ley lo exige, y la empresa no puede cambiarlo. En un **bono o incentivo** la empresa elige.
 
 ### El QR, pensado para quien no se maneja bien con el celular
 
-Muchos no saben que la cámara del celular lee códigos QR: quien usa Yape aprendió a escanear *dentro* de Yape. StellarRail hace lo mismo: el trabajador toca **Pagar con QR** y la app abre la cámara. Si no hay cámara o no hay permiso, se ofrece escribir el código de 6 números.
+Es el modelo de las tarjetas de alimentación con QR: **la tienda pone el monto y el trabajador confirma**. Así el trabajador nunca escribe un monto, que es donde más se equivoca quien no se maneja bien con el celular.
 
-**Cobro con monto.** La tienda escribe cuánto cobra y muestra un QR; el trabajador escanea y **solo confirma**, sin escribir nada. El cobro viaja en el propio enlace, **firmado por el servidor**:
+1. La tienda escribe cuánto cobra y toca **Cobrar con QR**. Aparece el QR y, debajo, el código de 6 números.
+2. El trabajador toca **Pagar**. La app abre la cámara, como Yape, porque muchos no saben que la cámara del celular lee códigos QR. Si no hay cámara o no hay permiso, escribe el código.
+3. Ve **a quién le paga, cuánto y si su vale sirve ahí**, antes de pagar. Si el programa no cubre esa tienda o no le alcanza el saldo, se lo dice en ese momento.
+4. Confirma: con un toque hasta S/ 50, con su PIN por encima.
+5. La tienda ve «Te pagaron» sin recargar.
+
+Quien no tiene smartphone paga con su tarjeta: la tienda toca **El cliente tiene tarjeta**, la escanea o escribe su número, y el trabajador marca su PIN en el equipo de la tienda.
+
+El cobro viaja en el propio enlace, **firmado por el servidor**:
 
 - el cliente no puede cambiar ni el monto ni el rubro: alterarlos rompe la firma;
-- la tienda declara el rubro de **cada venta**, así que una bodega que también vende televisores puede cobrar una tele como electrodomésticos, y esa declaración termina en el memo público;
+- el rubro es el de la tienda, fijado al afiliarla, y termina en el memo público;
 - caduca a los 10 minutos y se paga **una sola vez**: el servidor reserva la firma antes de enviar el pago, y la libera si la red lo rechaza.
 
 El vencimiento lo decide solo el servidor. El celular cuenta hacia atrás desde que recibe el cobro, sin comparar relojes: si el de un celular va adelantado, daría por vencido un cobro que todavía vale.
 
-**QR fijo.** Para imprimir y pegar en el mostrador, como los de Yape. El cliente escribe el monto.
-
-**Cómo se generan.** En SVG, nítido a cualquier tamaño, con el margen de cuatro módulos que exige la norma y corrección de errores alta, porque un cartel se ensucia y se raya. Siempre negro sobre blanco, también en modo oscuro. Contienen un enlace web normal, así que también los abre la cámara nativa de cualquier celular.
+**Cómo se generan.** En SVG, nítido a cualquier tamaño, con el margen de cuatro módulos que exige la norma y corrección de errores alta, porque una pantalla con reflejos o una tarjeta gastada se leen peor. Siempre negro sobre blanco, también en modo oscuro. Contienen un enlace web normal, así que también los abre la cámara nativa de cualquier celular.
 
 **Aviso en vivo, también en voz alta.** Cuando le pagan, la tienda lo ve en grande y, si lo activa, el celular lo dice: *"Recibiste 18 soles con 50 céntimos"*. No tiene que mirar la pantalla mientras atiende.
 
-### Entregar no duplica
+### Entregar: a quién y sin duplicar
+
+La empresa **elige a quién entrega**: un bono puede ser solo para un área o para quienes cumplieron una meta. Por defecto aparecen marcados todos los que aún no recibieron; quien ya recibió el vale de ese programa no se puede volver a elegir. Si alguien quedó congelado por un programa anterior, la entrega lo reactiva primero, en la red.
 
 Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos en "Entregar" no emiten dos veces el vale, y quien se verifica después de una entrega recibe el suyo en la siguiente. "Entregado" cuenta vales emitidos de verdad, cada uno con su hash; no es una estimación a partir de cuántos trabajadores hay verificados.
 
@@ -387,7 +396,7 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 |---|---|
 | El clawback **destruye** el saldo; no lo devuelve al emisor | El emisor recupera su respaldo en soles, que deja de estar comprometido |
 | El vencimiento no lo dispara la red | Lo ejecuta el emisor con un botón. Vercel Cron admite una ejecución diaria en el plan gratuito, suficiente para vencimientos por día |
-| Stellar controla quién tiene el activo, no en qué se gasta | El comercio declara el rubro en el memo y la aplicación lo compara con el programa. Un contrato Soroban que valide rubro y vigencia es el siguiente paso |
+| Stellar controla quién tiene el activo, no en qué se gasta | Cada tienda tiene un rubro fijo que viaja en el memo, y la aplicación lo compara con el programa. Los productos en caja son responsabilidad de la tienda, como en las tarjetas de alimentación. Un contrato Soroban que valide rubro y vigencia es el siguiente paso |
 | Verificación simulada | SEP-12 |
 | Un beneficiario podría transferir a otro tenedor autorizado | Requiere Soroban o un esquema donde solo los comercios reciban |
 | El emisor paga directo, sin cuenta distribuidora | En producción conviene separar ambos roles |
@@ -405,7 +414,7 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
 - `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con PIN y con tarjeta, tope diario, baja y vencimiento.
-- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega, pago con QR, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, foto del QR, enlace pegado, WhatsApp, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
+- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega a los elegidos, cobro con QR y código, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, cobro repetido o caducado, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 
