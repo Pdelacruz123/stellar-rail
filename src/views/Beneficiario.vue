@@ -18,7 +18,6 @@ import {
   estado, enPalabras, fecha, hablar, montoValido, programaVigente, recargar, soles,
 } from '../estado.js';
 import { verCobro } from '../enlaces.js';
-import { avisarCambio, cercano } from '../marco.js';
 import { RUBROS } from '../../lib/rubros.js';
 import { UMBRAL_PIN } from '../../lib/reglas.js';
 import Escaner from '../Escaner.vue';
@@ -38,7 +37,10 @@ const primerNombre = computed(() => (yo.value?.nombre ?? '').split(' ')[0]);
 const programa = computed(() => programaVigente());
 const rubrosDelPrograma = computed(() => (programa.value?.rubros ?? [])
   .map((r) => RUBROS[r] ?? r).join(', ').toLowerCase());
-const afiliados = computed(() => estado.comercios.filter((c) => c.afiliado));
+// Donde sirve el vale: tiendas afiliadas y del rubro que cubre el programa.
+// Una tienda de electrodomesticos no sirve para un vale de alimentos.
+const afiliados = computed(() => estado.comercios.filter((c) => c.afiliado
+  && (!programa.value || (programa.value.rubros ?? []).includes(c.rubro))));
 // Aprobado, pero la empresa todavia no le entrego el vale.
 const sinValeAun = computed(() => yo.value?.estado === 'verificado' && enLaRed.value
   && !enLaRed.value.congelado && Number(enLaRed.value.saldo) === 0 && !programa.value?.entregados);
@@ -64,7 +66,7 @@ async function cargarSaldo() {
 // Se vuelve a leer al ser aprobado, al recibir el vale o si otra pantalla
 // de la demostracion cambio algo.
 watch(
-  [() => yo.value?.id, () => yo.value?.estado, () => programa.value?.entregados, () => cercano.cambios],
+  [() => yo.value?.id, () => yo.value?.estado, () => programa.value?.entregados],
   cargarSaldo,
   { immediate: true },
 );
@@ -199,7 +201,6 @@ async function confirmar() {
     resultado.value = r;
     await cargarSaldo();
     pantalla.value = r.pagado ? 'hecho' : 'rechazado';
-    avisarCambio();
   } catch (e) {
     if (e.datos?.requierePin) {
       // PIN equivocado o bloqueado: se queda en la confirmacion para reintentar.
@@ -238,7 +239,7 @@ function escucharResultado() {
 
   <template v-if="yo">
     <!-- ============ INICIO ============ -->
-    <template v-if="pantalla === 'inicio'">
+    <div v-if="pantalla === 'inicio'" class="columnas">
       <section class="tarjeta">
         <p class="saludo">Hola, {{ primerNombre }}</p>
 
@@ -305,7 +306,7 @@ function escucharResultado() {
           </div>
         </div>
       </section>
-    </template>
+    </div>
 
     <!-- ============ ESCANEAR ============ -->
     <section v-else-if="pantalla === 'escanear'" class="tarjeta">

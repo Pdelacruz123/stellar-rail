@@ -60,8 +60,7 @@ async function probarDemo() {
   aviso.value = '';
   try {
     await crearDemo();
-    await ponerPerfil(await api.sesion());
-    window.location.hash = '#/tres';
+    window.location.hash = '#/demo';
   } catch (e) {
     aviso.value = e.message;
   } finally {
@@ -97,7 +96,7 @@ async function registrarEmpresa() {
   }
 }
 
-const volverADemo = () => { window.location.hash = '#/tres'; };
+const volverADemo = () => { window.location.hash = '#/demo'; };
 const PERFILES = [
   { clave: 'trabajador', nombre: 'Trabajador' },
   { clave: 'tienda', nombre: 'Tienda' },
@@ -134,7 +133,7 @@ const PERFILES = [
           <p class="apagado pequeno">
             La demostración crea una empresa de ejemplo con sus trabajadores y
             bodegas. Funciona en la red de pruebas de Stellar: no se usa dinero real.
-            <button v-if="hayDemo" class="enlace-texto" @click="volverADemo">Volver a mi demostración</button>
+            <button v-if="hayDemo" class="enlace-texto" @click="volverADemo">Ver mis cuentas de prueba</button>
           </p>
         </div>
 

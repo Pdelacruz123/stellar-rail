@@ -25,7 +25,6 @@ import {
 import {
   agrupar, enlaceCobro, enlaceFijo, leerTarjeta,
 } from '../enlaces.js';
-import { anunciarQr, avisarCambio, cercano } from '../marco.js';
 import { RUBROS } from '../../lib/rubros.js';
 import { TOPE_DIARIO_TARJETA } from '../../lib/reglas.js';
 import Escaner from '../Escaner.vue';
@@ -102,19 +101,6 @@ const whatsapp = computed(() => {
   return `https://wa.me/?text=${encodeURIComponent(texto)}`;
 });
 
-// Demostracion en tres pantallas: el QR que se ve aqui queda "al alcance"
-// del trabajador de al lado. Fuera de esa vista no hace nada.
-watch(
-  [modo, () => cobroActivo.value?.token, () => cobroActivo.value?.pagado, vencido, () => yo.value?.codigo_corto],
-  () => {
-    if (modo.value === 'fijo' && yo.value) anunciarQr(enlaceFijo(yo.value.codigo_corto));
-    else if (modo.value === 'monto' && cobroActivo.value && !cobroActivo.value.pagado && !vencido.value) {
-      anunciarQr(enlaceCobro(cobroActivo.value.token));
-    } else anunciarQr(null);
-  },
-  { immediate: true },
-);
-
 // --- Cobrar con tarjeta ------------------------------------------------------
 // monto -> leer -> escribir? -> pin -> pagando -> hecho | rechazado
 
@@ -175,7 +161,6 @@ async function cobrarConTarjeta() {
     if (r.pagado && voz.value) {
       hablar(`Pago hecho: ${enPalabras(r.monto)}. Le quedan ${enPalabras(r.saldoRestante ?? 0)}.`);
     }
-    avisarCambio();
     cargar();
   } catch (e) {
     if (e.datos?.requierePin) {
@@ -216,7 +201,6 @@ async function cargar() {
     // Se conserva lo ultimo que se vio: el aviso en vivo sigue funcionando.
   }
 }
-watch(() => cercano.cambios, cargar);
 const deHoy = computed(() => {
   const hoy = new Date().toDateString();
   return recibidos.value.filter((p) => new Date(p.fecha).toDateString() === hoy);
@@ -272,7 +256,6 @@ watch(() => yo.value?.id, () => {
 onUnmounted(() => {
   dejarDeEscuchar();
   clearInterval(reloj);
-  anunciarQr(null);
 });
 
 const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
@@ -285,6 +268,9 @@ const imprimir = () => window.print();
   </section>
 
   <template v-if="yo">
+    <!-- En computadora, dos columnas: cobrar a la izquierda, lo del dia a la derecha. -->
+    <div :class="['columnas', { sola: yo.estado !== 'verificado' }]">
+      <div class="columna">
     <section class="tarjeta">
       <div class="fila" style="border:none;padding:0">
         <h2 style="margin:0">{{ yo.nombre }}</h2>
@@ -319,7 +305,6 @@ const imprimir = () => window.print();
       </span>
     </div>
 
-    <!-- Cobrar, avisos y lo de hoy: solo para una tienda afiliada. -->
     <template v-if="yo.estado === 'verificado'">
     <section class="tarjeta">
       <h2>Cobrar</h2>
@@ -480,6 +465,9 @@ const imprimir = () => window.print();
       </div>
     </section>
 
+    </template>
+      </div>
+      <div v-if="yo.estado === 'verificado'" class="columna">
     <section class="tarjeta">
       <button class="interruptor" :aria-pressed="voz" @click="cambiarVoz">
         <Icono nombre="altavoz" />
@@ -507,7 +495,8 @@ const imprimir = () => window.print();
         Total recibido en vales: {{ soles(enLaRed.saldo) }}
       </p>
     </section>
-    </template>
+      </div>
+    </div>
 
     <!-- El cartel que se imprime: solo aparece al imprimir. -->
     <div class="cartel" aria-hidden="true">

@@ -7,7 +7,6 @@
  */
 import { reactive } from 'vue';
 import { api } from './api.js';
-import { avisarCambio } from './marco.js';
 
 export const estado = reactive({
   cargando: true,
@@ -72,7 +71,6 @@ export async function accion(fn) {
   try {
     const r = await fn();
     await recargar();
-    avisarCambio();
     return r;
   } catch (e) {
     if (e.datos?.sinSesion) await ponerPerfil(await api.sesion());

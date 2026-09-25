@@ -4,13 +4,10 @@
  * Un pago que no se hace NO es un error aqui: llega con estado 200 y
  * `pagado: false`, y `controlDe` dice quien lo freno: la red o la aplicacion.
  */
-import { credencialDelMarco } from './marco.js';
 
 async function pedir(ruta, metodo = 'GET', cuerpo) {
   const cabeceras = {};
   if (cuerpo) cabeceras['content-type'] = 'application/json';
-  // Dentro de la vista de tres pantallas, cada marco lleva su propia sesion.
-  if (credencialDelMarco) cabeceras['x-stellarrail-credencial'] = credencialDelMarco;
   const r = await fetch(`/api/${ruta}`, {
     method: metodo,
     headers: cabeceras,

@@ -4,7 +4,7 @@ import { api, saldoEnLaRed } from '../api.js';
 import {
   estado, accion, fecha, montoValido, ponerPerfil, programaVigente, soles,
 } from '../estado.js';
-import { enMarco } from '../marco.js';
+import { leerDemo } from '../demo.js';
 import Icono from '../Icono.vue';
 import Marca from '../Marca.vue';
 import { RUBROS, TIPOS } from '../../lib/rubros.js';
@@ -318,11 +318,12 @@ const diasParaVencer = computed(() => {
 });
 
 async function salir(todas = false) {
+  // Una cuenta de prueba vuelve a la lista de cuentas: asi se entra con otra.
+  const aCuentas = estado.yo?.demo && leerDemo();
   await (todas ? api.cerrarTodas() : api.salir()).catch(() => {});
   await ponerPerfil(await api.sesion());
-  window.location.hash = '#/';
+  window.location.hash = aCuentas ? '#/demo' : '#/';
 }
-const irA = (r) => { window.location.hash = r; };
 
 /**
  * Cada operacion del historial dicha para Recursos Humanos: que paso, no el
@@ -393,8 +394,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
         <Marca :tamano="28" />
         <span class="emp-nombre">{{ empresa }}</span>
         <span v-if="estado.yo?.demo" class="insignia">Prueba</span>
-        <div v-if="!enMarco" class="emp-cuenta">
-          <button v-if="estado.yo?.demo" class="suave chico ocultar-movil" @click="irA('#/tres')">Vista en vivo</button>
+        <div class="emp-cuenta">
           <button class="suave chico" @click="salir()">Salir</button>
         </div>
       </div>
@@ -772,7 +772,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
         <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="empresa" />
       </div>
 
-      <p v-if="!enMarco" style="margin-top:20px">
+      <p style="margin-top:20px">
         <button class="enlace" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
       </p>
       <p class="apagado pequeno pie-app">
