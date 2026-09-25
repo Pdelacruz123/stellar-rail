@@ -315,3 +315,112 @@ button.interruptor[aria-pressed="true"] .estado-interruptor { background: var(--
     margin: .4cm auto 0; padding-left: 1.2em;
   }
 }
+
+/* ---------- Portada y accesos ---------- */
+
+.demo-caja {
+  border: 2px solid var(--acento); border-radius: var(--radio);
+  padding: 16px; margin: 16px 0 4px; background: var(--acento-suave);
+}
+.demo-caja h3 { margin-bottom: 6px; }
+.puertas { display: grid; gap: 10px; }
+button.puerta {
+  justify-content: flex-start; text-align: left; gap: 14px; width: 100%; min-height: 72px;
+  background: var(--tarjeta); color: var(--tinta); border-color: var(--linea);
+}
+button.puerta span { display: grid; }
+button.puerta small { font-weight: 400; color: var(--apagado); font-size: .88em; }
+.quien { align-self: center; }
+
+.persona {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--linea);
+}
+.persona:last-of-type { border-bottom: none; }
+.persona .nombre { font-weight: 700; }
+dl.datos { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; }
+dl.datos dt { color: var(--apagado); font-size: .9em; }
+dl.datos dd { margin: 0; }
+dl.datos code { font-size: 1.05em; font-weight: 700; letter-spacing: .03em; }
+.recorrido { padding-left: 1.3em; margin: 0; }
+.recorrido li { margin-bottom: 8px; }
+
+/* ---------- PIN ---------- */
+
+.pin { margin-bottom: 8px; }
+.pin input { max-width: 260px; margin-left: auto; margin-right: auto; display: block; }
+.teclado {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  max-width: 300px; margin: 4px auto 12px;
+}
+.teclado button { min-height: 60px; font-size: 1.4em; }
+.teclado button.suave { font-size: 1em; }
+
+/* ---------- Escaner: alternativas a la camara ---------- */
+
+label.boton.subir {
+  display: flex; align-items: center; justify-content: center; gap: .5em;
+  width: 100%; min-height: 52px; margin-top: 10px; padding: 10px 16px;
+  border: 2px solid var(--linea); border-radius: 10px;
+  font-size: 1em; font-weight: 600; color: var(--tinta); cursor: pointer;
+}
+label.boton.subir:focus-within { outline: 3px solid var(--acento); outline-offset: 3px; }
+.oculto {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.pegar { margin-top: 10px; text-align: left; }
+.escaner .aviso button.principal { margin-top: 10px; }
+
+/* ---------- Tienda ---------- */
+
+.modos.tres-modos { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 420px) { .modos.tres-modos button { font-size: .9em; padding: 8px 4px; } }
+a.boton.ancho { width: 100%; min-height: 52px; margin-top: 10px; }
+
+/* ---------- Tarjeta impresa ---------- */
+
+.tarjeta-impresa {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 380px; margin: 8px auto; padding: 14px 16px;
+  border-radius: 14px; background: #fff; color: #111; border: 2px solid #15724a;
+  text-align: left;
+}
+.tarjeta-impresa p { margin: 0; }
+.tarjeta-impresa-marca { font-size: .75em; font-weight: 700; color: #15724a; text-transform: uppercase; letter-spacing: .04em; }
+.tarjeta-impresa-nombre { font-size: 1.15em; font-weight: 800; margin-top: 4px !important; }
+.tarjeta-impresa-empresa { font-size: .8em; color: #444; }
+.tarjeta-impresa-numero { font-family: ui-monospace, Consolas, monospace; font-size: 1.05em; font-weight: 700; margin-top: 6px !important; }
+.tarjeta-impresa-nota { font-size: .72em; color: #444; margin-top: 6px !important; }
+.tarjeta-impresa .qr { margin: 0; flex: none; }
+.hoja .qr { margin: 8px 0; }
+
+/* ---------- Tres pantallas ---------- */
+
+.tres { padding: 16px; }
+.tres-cabecera {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
+  flex-wrap: wrap; max-width: 1500px; margin: 0 auto 14px;
+}
+.tres-columnas {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+  max-width: 1500px; margin: 0 auto;
+}
+@media (max-width: 1100px) { .tres-columnas { grid-template-columns: 1fr; max-width: 560px; } }
+.columna {
+  background: var(--tarjeta); border: 1px solid var(--linea); border-radius: var(--radio);
+  padding: 12px; display: flex; flex-direction: column; min-width: 0;
+}
+.columna h2 { margin-bottom: 2px; }
+.columna select { margin-bottom: 8px; }
+.columna iframe {
+  width: 100%; height: 820px; border: 1px solid var(--linea); border-radius: 12px;
+  background: var(--papel);
+}
+.sin-smartphone { font-size: 1.02em; }
+
+/* La tarjeta tambien se imprime sola, en su tamano. */
+@media print {
+  .cartel .tarjeta-impresa { max-width: 9cm; border-color: #000; }
+  .cartel .tarjeta-impresa .qr { width: 3cm !important; height: 3cm !important; margin: 0; }
+}

@@ -7,6 +7,8 @@ import {
 import { RUBROS, TIPOS } from '../../lib/rubros.js';
 import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
+import TarjetaImpresa from '../TarjetaImpresa.vue';
+import { enlaceRestablecer } from '../enlaces.js';
 
 defineProps({ codigo: { type: String, default: '' }, cobro: { type: String, default: '' } });
 
@@ -17,8 +19,8 @@ const copiado = ref('');
 // --- Invitaciones -----------------------------------------------------------
 
 const MENSAJES = {
-  beneficiario: 'Hola. Te invitamos a recibir tu vale de alimentación. Ábrelo desde tu celular:',
-  comercio: 'Hola. Te invitamos a aceptar vales de alimentación en tu negocio, sin POS y sin comisión. Regístrate aquí:',
+  beneficiario: 'Hola. Te invitamos a recibir tu vale de alimentos. Regístrate con tu celular y elige un PIN:',
+  comercio: 'Hola. Te invitamos a aceptar vales de alimentos en tu negocio, sin POS y sin comisión. Regístrate aquí:',
 };
 
 const invitaciones = computed(() => {
@@ -29,8 +31,8 @@ const invitaciones = computed(() => {
       rol,
       titulo: rol === 'beneficiario' ? 'Invitar trabajadores' : 'Invitar comercios',
       detalle: rol === 'beneficiario'
-        ? 'Cada trabajador abre el enlace en su celular y escribe su nombre. Después tú lo apruebas.'
-        : 'La bodega abre el enlace y registra su negocio en tres campos. Después tú la afilias.',
+        ? 'Cada trabajador abre el enlace, escribe su nombre y su celular, y elige un PIN. Después tú lo apruebas.'
+        : 'La bodega abre el enlace, registra su negocio y elige un PIN. Después tú la afilias.',
       enlace,
       whatsapp: `https://wa.me/?text=${encodeURIComponent(`${MENSAJES[rol]} ${enlace}`)}`,
     };
@@ -65,8 +67,6 @@ const pendientes = computed(() => [
   ...estado.comercios.filter((c) => c.estado === 'pendiente')
     .map((c) => ({ ...c, tipo: 'comercio' })),
 ]);
-const revisados = computed(() => [...estado.beneficiarios, ...estado.comercios]
-  .filter((x) => x.estado !== 'pendiente'));
 
 async function verificar(fila, aprobar) {
   trabajando.value = `${fila.tipo}-${fila.id}`;
@@ -79,6 +79,79 @@ async function verificar(fila, aprobar) {
     trabajando.value = '';
   }
 }
+
+// --- Personas: tarjeta, PIN nuevo, baja --------------------------------------
+
+const hoja = ref(null);   // { tipo:'pin', nombre, enlace } | { tipo:'tarjeta', nombre, numero }
+const confirmarBaja = ref(null);
+
+async function darTarjeta(b) {
+  trabajando.value = `tarjeta-${b.id}`;
+  try {
+    const r = await accion(() => api.darTarjeta(b.id));
+    hoja.value = { tipo: 'tarjeta', nombre: r.nombre, numero: r.tarjeta };
+  } finally {
+    trabajando.value = '';
+  }
+}
+
+async function anularTarjeta(b) {
+  trabajando.value = `anular-${b.id}`;
+  try {
+    await accion(() => api.anularTarjeta(b.id));
+    if (hoja.value?.tipo === 'tarjeta' && hoja.value.numero === b.tarjeta) hoja.value = null;
+  } finally {
+    trabajando.value = '';
+  }
+}
+
+/** Sin SMS: la empresa le pasa el enlace por WhatsApp o con un QR en RR. HH. */
+async function nuevoPin(tabla, fila) {
+  trabajando.value = `pin-${tabla}-${fila.id}`;
+  try {
+    const r = await accion(() => api.nuevoPin(tabla, fila.id));
+    const enlace = enlaceRestablecer(r.token);
+    hoja.value = {
+      tipo: 'pin',
+      nombre: r.nombre,
+      enlace,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(`Hola, ${r.nombre}. Con este enlace eliges tu PIN nuevo de StellarRail. Sirve una sola vez, durante 24 horas: ${enlace}`)}`,
+    };
+  } finally {
+    trabajando.value = '';
+  }
+}
+
+/** Congela y anula su saldo en una sola transaccion, como al vencer. */
+async function darDeBaja(b) {
+  trabajando.value = `baja-${b.id}`;
+  try {
+    const r = await accion(() => api.darDeBaja(b.id));
+    ultima.value = r.transaccion ?? null;
+    confirmarBaja.value = null;
+    await cargarGasto();
+  } finally {
+    trabajando.value = '';
+  }
+}
+
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    copiado.value = 'hoja';
+    setTimeout(() => { copiado.value = ''; }, 2500);
+  } catch {
+    estado.error = 'No se pudo copiar. Mantén presionado el enlace para copiarlo.';
+  }
+}
+const imprimir = () => window.print();
+
+const ESTADOS = {
+  pendiente: ['espera', 'Pendiente'],
+  verificado: ['ok', 'Autorizado en la red'],
+  rechazado: ['no', 'Rechazado'],
+  baja: ['no', 'De baja'],
+};
 
 // --- Programa ---------------------------------------------------------------
 
@@ -176,9 +249,9 @@ const porEntregar = computed(() => (programa.value
   <section class="tarjeta">
     <h2>Invitar</h2>
     <p class="apagado pequeno">
-      Nadie necesita contraseñas ni instalar nada. Comparte el enlace por
-      WhatsApp o muestra el código: cada persona lo abre en su celular y entra
-      directo a su pantalla.
+      Nadie necesita instalar nada. Comparte el enlace por WhatsApp o muestra
+      el código: cada persona se registra con su celular y un PIN de 4 números,
+      y con eso entra después.
     </p>
     <div class="invitaciones">
       <article v-for="inv in invitaciones" :key="inv.rol" class="invitacion">
@@ -221,17 +294,86 @@ const porEntregar = computed(() => (programa.value
       </div>
     </div>
 
-    <div class="bloque">
-      <h3>Ya revisados</h3>
-      <p v-if="!revisados.length" class="apagado pequeno">Todavía ninguno.</p>
-      <div v-for="f in revisados" :key="f.cuenta_publica" class="fila">
-        <span>{{ f.nombre }}</span>
-        <span :class="['etiqueta', f.estado === 'verificado' ? 'ok' : 'no']">
-          {{ f.estado === 'verificado' ? 'Autorizado en la red' : 'Rechazado' }}
-        </span>
+    <Prueba v-if="ultima" :tx="ultima" />
+  </section>
+
+  <section class="tarjeta">
+    <h2>Personas</h2>
+    <h3>Trabajadores</h3>
+    <p v-if="!estado.beneficiarios.length" class="apagado pequeno">Todavía nadie se registró.</p>
+    <div v-for="b in estado.beneficiarios" :key="`b-${b.id}`" class="fila">
+      <div>
+        <div class="nombre">{{ b.nombre }}</div>
+        <div class="apagado pequeno">
+          <template v-if="b.celular">Celular {{ b.celular }}</template>
+          <template v-if="b.tarjeta"> · Tarjeta {{ b.tarjeta }}</template>
+        </div>
+        <span :class="['etiqueta', ESTADOS[b.estado]?.[0]]">{{ ESTADOS[b.estado]?.[1] ?? b.estado }}</span>
+      </div>
+      <div v-if="b.estado !== 'baja'" class="acciones">
+        <button v-if="b.estado !== 'rechazado'" class="suave chico" :disabled="Boolean(trabajando)" @click="darTarjeta(b)">
+          {{ b.tarjeta ? 'Nueva tarjeta' : 'Dar tarjeta' }}
+        </button>
+        <button v-if="b.tarjeta" class="suave chico" :disabled="Boolean(trabajando)" @click="anularTarjeta(b)">Anular tarjeta</button>
+        <button v-if="b.celular" class="suave chico" :disabled="Boolean(trabajando)" @click="nuevoPin('beneficiarios', b)">Nuevo PIN</button>
+        <button class="no chico" :disabled="Boolean(trabajando)" @click="confirmarBaja = b">Dar de baja</button>
+      </div>
+      <div v-if="confirmarBaja?.id === b.id" class="aviso no" role="alertdialog" style="flex-basis:100%">
+        <strong>¿Dar de baja a {{ b.nombre }}?</strong>
+        Su saldo se congela y se anula en una sola transacción, y su tarjeta
+        deja de servir. No se puede deshacer.
+        <div class="acciones" style="margin-top:8px">
+          <button class="no chico" :disabled="trabajando === `baja-${b.id}`" @click="darDeBaja(b)">
+            {{ trabajando === `baja-${b.id}` ? 'Dando de baja…' : 'Sí, dar de baja' }}
+          </button>
+          <button class="suave chico" @click="confirmarBaja = null">No</button>
+        </div>
       </div>
     </div>
-    <Prueba v-if="ultima" :tx="ultima" />
+
+    <h3 style="margin-top:16px">Tiendas</h3>
+    <p v-if="!estado.comercios.length" class="apagado pequeno">Todavía ninguna tienda se registró.</p>
+    <div v-for="c in estado.comercios" :key="`c-${c.id}`" class="fila">
+      <div>
+        <div class="nombre">{{ c.nombre }}</div>
+        <div class="apagado pequeno">
+          {{ RUBROS[c.rubro] ?? '' }}<template v-if="c.celular"> · Celular {{ c.celular }}</template>
+        </div>
+        <span :class="['etiqueta', ESTADOS[c.estado]?.[0]]">
+          {{ c.estado === 'verificado' ? 'Afiliada en la red' : ESTADOS[c.estado]?.[1] }}
+        </span>
+      </div>
+      <button v-if="c.celular" class="suave chico" :disabled="Boolean(trabajando)" @click="nuevoPin('comercios', c)">Nuevo PIN</button>
+    </div>
+
+    <!-- Lo que se le entrega a la persona: su tarjeta o su enlace de PIN nuevo. -->
+    <div v-if="hoja" class="bloque hoja">
+      <template v-if="hoja.tipo === 'tarjeta'">
+        <h3>Tarjeta de {{ hoja.nombre }}</h3>
+        <p class="apagado pequeno">
+          Imprímela y entrégasela. Paga en las tiendas afiliadas marcando su PIN,
+          hasta S/ 100 por día. La anterior, si tenía, ya no sirve.
+        </p>
+        <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="estado.yo?.empresa ?? ''" />
+        <div class="acciones" style="margin-top:10px">
+          <button class="si" @click="imprimir">Imprimir tarjeta</button>
+          <button class="suave" @click="hoja = null">Cerrar</button>
+        </div>
+      </template>
+      <template v-else>
+        <h3>PIN nuevo para {{ hoja.nombre }}</h3>
+        <p class="apagado pequeno">
+          Envíale este enlace o que escanee el código. Sirve una sola vez,
+          durante 24 horas. Al usarlo se cierran sus sesiones abiertas.
+        </p>
+        <Qr :texto="hoja.enlace" nivel="M" :tamano="190" :alt="`Código QR para que ${hoja.nombre} elija su PIN nuevo`" />
+        <div class="acciones" style="margin-top:10px">
+          <a class="boton si" :href="hoja.whatsapp" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+          <button class="suave" @click="copiarTexto(hoja.enlace)">{{ copiado === 'hoja' ? 'Copiado' : 'Copiar enlace' }}</button>
+          <button class="suave" @click="hoja = null">Cerrar</button>
+        </div>
+      </template>
+    </div>
   </section>
 
   <section class="tarjeta">
@@ -339,6 +481,10 @@ const porEntregar = computed(() => (programa.value
     </div>
     <p v-if="!gasto.length" class="apagado pequeno">Todavía no hay trabajadores verificados.</p>
   </section>
+
+  <div v-if="hoja?.tipo === 'tarjeta'" class="cartel" aria-hidden="true">
+    <TarjetaImpresa :numero="hoja.numero" :nombre="hoja.nombre" :empresa="estado.yo?.empresa ?? ''" />
+  </div>
 
   <section class="tarjeta">
     <h2>Historial en la red</h2>
