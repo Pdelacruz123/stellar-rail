@@ -187,9 +187,9 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ### En línea, sin instalar nada
 
-Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. Se crea una empresa de prueba solo para ti, con cinco cuentas, y se abre la página **Cuentas de prueba** con el correo, el celular y el PIN de cada una. No hace falta celular ni ninguna credencial guardada en otro lado.
+Abre <https://stellar-rail.vercel.app>: como cualquier página con cuentas, empieza pidiendo entrar o crear la cuenta de la empresa. Debajo del formulario, toca **Probar la demostración**: se crea una empresa de prueba solo para ti, con cinco cuentas, y aparecen el correo, el celular y el PIN de cada una. **Usar** completa el formulario y entras con **Entrar**. No hace falta celular ni ninguna credencial guardada en otro lado.
 
-Funciona como cualquier página con cuentas: entras con una, haces lo que corresponde, sales y entras con otra. Al salir de una cuenta de prueba vuelves a la lista.
+Para cambiar de persona, sales y entras con otra.
 
 | Persona | Qué representa |
 |---|---|

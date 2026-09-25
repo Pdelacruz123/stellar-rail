@@ -314,7 +314,7 @@ La empresa invita con dos enlaces firmados, uno para trabajadores y otro para ti
 
 ### La demostración
 
-**Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y abre la página de cuentas de prueba con el correo, el celular y el PIN de cada una. Se recorre como cualquier página con cuentas: se entra con una, se sale y se entra con otra. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
+La entrada al sitio es el inicio de sesión, como en cualquier página con cuentas. Debajo, **Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y muestra el correo, el celular y el PIN de cada una; «Usar» completa el formulario. Se entra con una, se sale y se entra con otra. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
 
 Cada pantalla es responsiva: en computadora, la tienda y el trabajador ven dos columnas; en celular, una.
 
