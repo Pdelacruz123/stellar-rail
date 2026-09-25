@@ -88,6 +88,36 @@ async function verificar(fila, aprobar) {
 const hoja = ref(null);   // { tipo:'pin', nombre, enlace } | { tipo:'tarjeta', nombre, numero }
 const confirmarBaja = ref(null);
 
+/**
+ * Registrar a alguien en Recursos Humanos: para quien no puede abrir la
+ * invitacion, por ejemplo porque no tiene smartphone. La persona escribe su
+ * PIN en el equipo de la empresa; nadie mas lo conoce. Queda pendiente, como
+ * cualquier registro, y despues se le puede dar su tarjeta.
+ */
+const altaRrhh = ref({ abierta: false, nombre: '', celular: '', pin: '', pin2: '' });
+const avisoAlta = ref('');
+async function registrarTrabajador() {
+  avisoAlta.value = '';
+  const a = altaRrhh.value;
+  if (a.pin !== a.pin2) {
+    avisoAlta.value = 'Los dos PIN no son iguales. Que la persona los escriba otra vez.';
+    a.pin = '';
+    a.pin2 = '';
+    return;
+  }
+  trabajando.value = 'alta';
+  try {
+    const r = await accion(() => api.registrarBeneficiario({ nombre: a.nombre, celular: a.celular, pin: a.pin }));
+    ultima.value = r.transaccion ?? null;
+    altaRrhh.value = { abierta: false, nombre: '', celular: '', pin: '', pin2: '' };
+  } catch (e) {
+    avisoAlta.value = e.message;
+    estado.error = null;
+  } finally {
+    trabajando.value = '';
+  }
+}
+
 async function darTarjeta(b) {
   trabajando.value = `tarjeta-${b.id}`;
   try {
@@ -164,7 +194,7 @@ const en30dias = () => {
   return d.toISOString().slice(0, 10);
 };
 const nuevo = ref({
-  nombre: 'Alimentación septiembre',
+  nombre: `Vale de alimentos · ${new Date().toLocaleDateString('es-PE', { month: 'long' }).toLowerCase()}`,
   monto: '50',
   venceEl: en30dias(),
   tipo: 'alimentaria',
@@ -193,11 +223,16 @@ async function crear() {
   }
 }
 
+const hecho = ref('');   // confirmacion de la ultima accion del programa
 async function ejecutar(nombre, fn) {
   trabajando.value = nombre;
+  hecho.value = '';
   try {
     const r = await accion(fn);
     ultima.value = r.transacciones?.at(-1) ?? null;
+    if (nombre === 'entregar') {
+      hecho.value = `Vale entregado a ${r.entregados} ${r.entregados === 1 ? 'trabajador' : 'trabajadores'}.`;
+    }
     await cargarGasto();
   } finally {
     trabajando.value = '';
@@ -261,6 +296,8 @@ const SECCIONES = computed(() => [
 function irSeccion(clave) {
   seccion.value = clave;
   hoja.value = null;
+  ultima.value = null;
+  hecho.value = '';
   window.scrollTo(0, 0);
 }
 const empresa = computed(() => (estado.yo?.empresa ?? 'Empresa').replace(' (demostración)', ''));
@@ -286,6 +323,65 @@ async function salir(todas = false) {
   window.location.hash = '#/';
 }
 const irA = (r) => { window.location.hash = r; };
+
+/**
+ * Cada operacion del historial dicha para Recursos Humanos: que paso, no el
+ * nombre tecnico de la operacion. El codigo de la red queda aparte, como
+ * evidencia.
+ */
+const MOTIVOS = {
+  op_not_authorized: 'La tienda no está afiliada',
+  op_src_not_authorized: 'El vale estaba congelado',
+  op_underfunded: 'No alcanzaba el saldo',
+};
+function describir(e) {
+  const t = e.etiqueta ?? '';
+  const numero = (re) => Number((re.exec(t) ?? [])[1] ?? 1);
+  if (e.tipo === 'pagar') {
+    const monto = (/pagar ([\d.]+)/.exec(t) ?? [])[1];
+    const rubro = RUBROS[(/rubro (\w+)/.exec(t) ?? [])[1]];
+    return {
+      titulo: e.exitosa ? `Pago de ${soles(monto)}` : `Pago de ${soles(monto)} rechazado por la red`,
+      detalle: e.exitosa ? rubro ?? '' : MOTIVOS[e.codigo_error] ?? 'La red no lo aceptó',
+    };
+  }
+  if (e.tipo === 'emitir') {
+    const n = numero(/\((\d+) beneficiarios\)/);
+    return { titulo: `Vale entregado a ${n} ${n === 1 ? 'trabajador' : 'trabajadores'}`, detalle: '' };
+  }
+  if (e.tipo === 'autorizar') return { titulo: 'Aprobación: cuenta autorizada para el vale', detalle: '' };
+  if (e.tipo.startsWith('alta')) {
+    const n = numero(/\((\d+) cuentas/);
+    return { titulo: n === 1 ? 'Cuenta creada' : `${n} cuentas creadas`, detalle: 'Las reservas de la red las cubre la empresa' };
+  }
+  if (e.tipo === 'vencer') return { titulo: 'Programa vencido', detalle: 'Vales congelados y saldo no usado anulado' };
+  if (e.tipo === 'baja') return { titulo: 'Baja de un trabajador', detalle: 'Vale congelado y saldo anulado' };
+  return { titulo: t, detalle: '' };
+}
+const cuando = (f) => new Date(f).toLocaleString('es-PE', {
+  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+/** Para una empresa que recien empieza: que falta para entregar el primer vale. */
+const primerosPasos = computed(() => [
+  {
+    texto: 'Invita a tus trabajadores y a las bodegas',
+    hecho: estado.beneficiarios.length > 0 && estado.comercios.length > 0,
+    ir: 'invitar',
+  },
+  {
+    texto: 'Aprueba a quienes se registraron',
+    hecho: estado.beneficiarios.some((b) => b.estado === 'verificado')
+      && estado.comercios.some((c) => c.estado === 'verificado'),
+    ir: 'resumen',
+  },
+  {
+    texto: 'Crea el programa y entrega el vale',
+    hecho: (programa.value?.entregados ?? 0) > 0,
+    ir: 'programa',
+  },
+]);
+const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !programa.value?.entregados);
 </script>
 
 <template>
@@ -334,7 +430,22 @@ const irA = (r) => { window.location.hash = r; };
           <span v-else-if="programa?.estado === 'vencido'" class="etiqueta no">Vencido</span>
         </div>
 
-        <div class="cifras" style="margin-bottom:16px">
+        <section v-if="empezando" class="tarjeta">
+          <h2>Primeros pasos</h2>
+          <ol class="pasos-lista">
+            <li v-for="(p, i) in primerosPasos" :key="i" :class="{ hecho: p.hecho }">
+              <span class="paso-marca" aria-hidden="true">
+                <Icono v-if="p.hecho" nombre="check" :tamano="16" /><template v-else>{{ i + 1 }}</template>
+              </span>
+              <span class="paso-texto">{{ p.texto }}<span v-if="p.hecho" class="oculto"> (hecho)</span></span>
+              <button v-if="!p.hecho && p.ir !== 'resumen'" class="suave chico" @click="irSeccion(p.ir)">
+                {{ p.ir === 'invitar' ? 'Invitar' : 'Ir al programa' }}
+              </button>
+            </li>
+          </ol>
+        </section>
+
+        <div v-if="programa" class="cifras" style="margin-bottom:16px">
           <div class="cifra destacada">
             <span>Gastado en bodegas</span><b>{{ soles(gastado) }}</b>
             <span v-if="entregado">{{ Math.round((gastado / entregado) * 100) }} % de {{ soles(entregado) }}</span>
@@ -374,7 +485,7 @@ const irA = (r) => { window.location.hash = r; };
           <Prueba v-if="ultima" :tx="ultima" />
         </section>
 
-        <section class="tarjeta">
+        <section v-if="programa" class="tarjeta">
           <h2><span class="punto" aria-hidden="true" /> Gasto en vivo</h2>
           <p class="apagado pequeno">Saldos leídos en vivo desde la red Stellar.</p>
           <p v-if="!gasto.length" class="apagado">Todavía no hay trabajadores aprobados.</p>
@@ -411,13 +522,15 @@ const irA = (r) => { window.location.hash = r; };
             </fieldset>
             <fieldset class="campo">
               <legend>Dónde se puede gastar</legend>
-              <p v-if="rubrosFijos" class="apagado pequeno" style="margin:0 0 6px">
-                La Ley 28051 exige que la prestación alimentaria se use solo en alimentos.
+              <p v-if="rubrosFijos" style="margin:4px 0">
+                Solo en <b>alimentos y abarrotes</b>: lo exige la Ley 28051 para la prestación alimentaria.
               </p>
-              <label v-for="(nombre, clave) in RUBROS" :key="clave" class="opcion">
-                <input v-model="nuevo.rubros" type="checkbox" :value="clave" :disabled="rubrosFijos">
-                {{ nombre }}
-              </label>
+              <template v-else>
+                <label v-for="(nombre, clave) in RUBROS" :key="clave" class="opcion">
+                  <input v-model="nuevo.rubros" type="checkbox" :value="clave">
+                  {{ nombre }}
+                </label>
+              </template>
             </fieldset>
             <div class="campo">
               <label for="pn">Nombre</label>
@@ -467,6 +580,7 @@ const irA = (r) => { window.location.hash = r; };
               </button>
             </div>
 
+            <p v-if="hecho" class="aviso ok" role="status">{{ hecho }}</p>
             <p v-if="programa.estado === 'vencido'" class="aviso ok">
               El saldo no usado se anuló en la red: deja de existir, y el respaldo
               en soles de la empresa deja de estar comprometido.
@@ -480,6 +594,42 @@ const irA = (r) => { window.location.hash = r; };
       <template v-else-if="seccion === 'personas'">
         <div class="emp-titulo"><div><h1>Trabajadores</h1><p>Tarjetas, PIN nuevo y bajas.</p></div></div>
         <section class="tarjeta">
+          <div class="fila" style="border:none;padding-top:0">
+            <p class="apagado pequeno" style="margin:0">
+              ¿Alguien no puede abrir la invitación, por ejemplo porque no tiene smartphone? Regístralo aquí.
+            </p>
+            <button v-if="!altaRrhh.abierta" class="suave chico" @click="altaRrhh.abierta = true">Registrar trabajador</button>
+          </div>
+          <form v-if="altaRrhh.abierta" class="bloque" style="margin-top:0" @submit.prevent="registrarTrabajador">
+            <h3>Registrar trabajador</h3>
+            <div class="pareja">
+              <div class="campo">
+                <label for="rt-nombre">Nombre</label>
+                <input id="rt-nombre" v-model="altaRrhh.nombre" autocomplete="off" required>
+              </div>
+              <div class="campo">
+                <label for="rt-cel">Celular (con él entra, si algún día tiene smartphone)</label>
+                <input id="rt-cel" v-model="altaRrhh.celular" type="tel" inputmode="numeric" autocomplete="off" required>
+              </div>
+            </div>
+            <p class="apagado pequeno">Pásale el equipo a la persona para que elija su PIN. Nadie más debe verlo.</p>
+            <div class="pareja">
+              <div class="campo">
+                <label for="rt-pin">PIN de 4 números</label>
+                <input id="rt-pin" v-model="altaRrhh.pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" required>
+              </div>
+              <div class="campo">
+                <label for="rt-pin2">Repite el PIN</label>
+                <input id="rt-pin2" v-model="altaRrhh.pin2" type="password" inputmode="numeric" maxlength="4" autocomplete="off" required>
+              </div>
+            </div>
+            <p v-if="avisoAlta" class="aviso no" role="alert">{{ avisoAlta }}</p>
+            <div class="acciones">
+              <button class="si" :disabled="trabajando === 'alta'">{{ trabajando === 'alta' ? 'Registrando…' : 'Registrar' }}</button>
+              <button type="button" class="suave" @click="altaRrhh.abierta = false">Cancelar</button>
+            </div>
+            <p class="apagado pequeno" style="margin-top:10px">Queda por aprobar en «Inicio». Después le das su tarjeta desde esta lista.</p>
+          </form>
           <p v-if="!estado.beneficiarios.length" class="apagado">Todavía nadie se registró. Invítalos desde «Invitar».</p>
           <div v-for="b in estado.beneficiarios" :key="`b-${b.id}`" class="fila">
             <div class="persona-t">
@@ -559,6 +709,11 @@ const irA = (r) => { window.location.hash = r; };
               <button v-if="puedeCompartir" class="suave" @click="compartir(inv)">Compartir</button>
               <button class="suave" @click="copiar(inv)">{{ copiado === inv.rol ? 'Copiado' : 'Copiar enlace' }}</button>
             </div>
+            <p v-if="inv.rol === 'beneficiario'" class="apagado pequeno" style="margin:12px 0 0">
+              ¿Alguien no tiene smartphone?
+              <button class="enlace-texto" @click="irSeccion('personas'); altaRrhh.abierta = true">Regístralo en Recursos Humanos</button>
+              y dale una tarjeta.
+            </p>
           </article>
         </div>
       </template>
@@ -570,9 +725,13 @@ const irA = (r) => { window.location.hash = r; };
           <p v-if="!estado.eventos.length" class="apagado pequeno">Sin operaciones todavía.</p>
           <div v-for="e in estado.eventos" :key="e.id" class="fila">
             <div>
-              <div class="nombre">{{ e.etiqueta }}</div>
-              <div v-if="!e.exitosa" class="apagado pequeno">
-                Rechazada por la red: <code>{{ e.codigo_error }}</code>
+              <div class="nombre">
+                {{ describir(e).titulo }}
+                <span v-if="!e.exitosa" class="etiqueta no">Rechazado</span>
+              </div>
+              <div class="apagado pequeno">
+                {{ cuando(e.creado_en) }}<template v-if="describir(e).detalle"> · {{ describir(e).detalle }}</template>
+                <template v-if="!e.exitosa"> · código de la red: <code>{{ e.codigo_error }}</code></template>
               </div>
             </div>
             <a :href="e.explorador" target="_blank" rel="noopener" class="pequeno">ver comprobante</a>

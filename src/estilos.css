@@ -622,3 +622,18 @@ button.emp-pestana[aria-current="page"] { color: var(--texto); font-weight: 700;
 
 /* Marco angosto (vista en vivo, tablet): las pestanas sin icono, para que quepan todas. */
 @media (max-width: 820px) { button.emp-pestana .icono { display: none; } button.emp-pestana { padding: 0 10px; } }
+
+/* Primeros pasos de una empresa nueva. */
+.pasos-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pasos-lista li { display: flex; align-items: center; gap: 12px; min-height: 48px; }
+.paso-marca {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  font-size: .85rem; font-weight: 700; background: var(--superficie-2); color: var(--texto-2);
+}
+.pasos-lista li.hecho .paso-marca { background: var(--exito-fondo); color: var(--exito); }
+.pasos-lista li.hecho .paso-texto { color: var(--texto-2); text-decoration: line-through; }
+.paso-texto { flex: 1; }
+/* El PIN en un formulario: a todo el ancho, como los demas campos. En el
+   teclado de la tienda, centrado y grande. */
+.pin > label:not(.pregunta) + input { max-width: none; font-size: 1.6em; letter-spacing: .3em; }
+.pin input { margin-bottom: 12px; }
