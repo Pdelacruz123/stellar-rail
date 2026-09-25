@@ -308,7 +308,7 @@ El PIN y la contraseña se guardan cifrados con **scrypt** y una sal por usuario
 
 Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el usuario y su *versión*. Subir la versión invalida todas sus credenciales: así funciona «cerrar sesión en todos mis dispositivos», y también cambiar el PIN o dar de baja.
 
-**Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, y el jurado no podría probarlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos.
+**Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, y el jurado no podría probarlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos. Guardar el PIN nuevo no inicia sesión: el enlace puede abrirse en el equipo de Recursos Humanos, con la cuenta de la empresa abierta, y no debe cambiarla. Por lo mismo, una invitación abierta con otra cuenta en el equipo avisa y ofrece salir primero.
 
 La empresa invita con dos enlaces firmados, uno para trabajadores y otro para tiendas. Invitar no aprueba a nadie: el control sigue siendo la verificación, que se ejecuta en la red.
 
