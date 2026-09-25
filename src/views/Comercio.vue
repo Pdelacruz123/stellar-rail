@@ -2,10 +2,12 @@
 /**
  * La pantalla de la tienda.
  *
- * Dos maneras de cobrar, como con los QR que la bodega ya usa:
+ * Tres maneras de cobrar:
  *  - Con monto: la tienda escribe cuanto cobra y muestra el QR. El cliente
- *    solo confirma, sin escribir nada. Es la opcion principal: la tienda
- *    teclea montos todo el dia, el cliente quiza no.
+ *    solo confirma, sin escribir nada. Tambien se le puede enviar el cobro
+ *    por WhatsApp, si paga desde otro lado o la camara no le funciona.
+ *  - Con tarjeta: para quien no tiene smartphone. La tienda escribe el
+ *    monto, escanea la tarjeta impresa y el cliente marca su PIN aqui.
  *  - QR fijo: se imprime y se pega en el mostrador. El cliente escribe el
  *    monto.
  *
@@ -18,45 +20,25 @@ import {
   api, escucharPagos, explorador, pagosRecibidos, saldoEnLaRed,
 } from '../api.js';
 import {
-  estado, accion, enPalabras, hablar, montoValido, refrescarYo, soles,
+  estado, enPalabras, hablar, montoValido, soles,
 } from '../estado.js';
-import { agrupar, enlaceCobro, enlaceFijo } from '../enlaces.js';
+import {
+  agrupar, enlaceCobro, enlaceFijo, leerTarjeta,
+} from '../enlaces.js';
+import { anunciarQr, avisarCambio, cercano } from '../marco.js';
 import { RUBROS } from '../../lib/rubros.js';
+import { TOPE_DIARIO_TARJETA } from '../../lib/reglas.js';
+import Escaner from '../Escaner.vue';
 import Icono from '../Icono.vue';
+import Pin from '../Pin.vue';
+import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
 
 defineProps({ codigo: { type: String, default: '' }, cobro: { type: String, default: '' } });
 
-const esEmpresa = computed(() => estado.yo?.rol === 'empresa');
-const elegido = ref(null);
-const nuevo = ref({ nombre: '', distrito: '', telefono: '', rubro: 'alimentos' });
+// La tienda de este celular. La API solo le devuelve la suya.
+const yo = computed(() => estado.comercios[0] ?? null);
 const trabajando = ref(false);
-
-// La tienda de este celular, o la que elige la empresa en la demostracion.
-const yo = computed(() => {
-  if (!esEmpresa.value) return estado.comercios[0] ?? null;
-  return estado.comercios.find((c) => c.id === elegido.value) ?? null;
-});
-watch(() => estado.comercios, (lista) => {
-  if (esEmpresa.value && elegido.value === null && lista.length) elegido.value = lista[0].id;
-}, { immediate: true, deep: true });
-
-async function registrar() {
-  trabajando.value = true;
-  try {
-    const r = await accion(() => api.registrarComercio({
-      nombre: nuevo.value.nombre.trim(),
-      distrito: nuevo.value.distrito.trim(),
-      telefono: nuevo.value.telefono.trim(),
-      rubro: nuevo.value.rubro,
-    }));
-    if (esEmpresa.value) elegido.value = r.comercio.id;
-    else await refrescarYo();
-    nuevo.value = { nombre: '', distrito: '', telefono: '', rubro: 'alimentos' };
-  } finally {
-    trabajando.value = false;
-  }
-}
 
 // --- Cobrar con monto --------------------------------------------------------
 
@@ -89,11 +71,7 @@ async function generarCobro() {
   aviso.value = '';
   trabajando.value = true;
   try {
-    const r = await api.cobrar({
-      monto,
-      rubro: cobroRubro.value,
-      ...(esEmpresa.value ? { comercioId: yo.value.id } : {}),
-    });
+    const r = await api.cobrar({ monto, rubro: cobroRubro.value });
     // El contador arranca ahora mismo, no en el ultimo tic del reloj: si no,
     // empezaria mostrando 10:01.
     ahora.value = Date.now();
@@ -111,6 +89,112 @@ async function nuevoCobro() {
   await nextTick();
   campoMonto.value?.focus();
 }
+
+/**
+ * El mismo cobro, enviado por WhatsApp con un enlace wa.me: no necesita la
+ * API de WhatsApp Business ni ningun servicio de pago. El cliente abre el
+ * enlace y confirma, igual que si hubiera escaneado el QR.
+ */
+const whatsapp = computed(() => {
+  if (!cobroActivo.value || !yo.value) return '';
+  const texto = `Paga ${soles(cobroActivo.value.monto)} a ${yo.value.nombre} con tu vale StellarRail. `
+    + `Abre este enlace y confirma (vence en 10 minutos): ${enlaceCobro(cobroActivo.value.token)}`;
+  return `https://wa.me/?text=${encodeURIComponent(texto)}`;
+});
+
+// Demostracion en tres pantallas: el QR que se ve aqui queda "al alcance"
+// del trabajador de al lado. Fuera de esa vista no hace nada.
+watch(
+  [modo, () => cobroActivo.value?.token, () => cobroActivo.value?.pagado, vencido, () => yo.value?.codigo_corto],
+  () => {
+    if (modo.value === 'fijo' && yo.value) anunciarQr(enlaceFijo(yo.value.codigo_corto));
+    else if (modo.value === 'monto' && cobroActivo.value && !cobroActivo.value.pagado && !vencido.value) {
+      anunciarQr(enlaceCobro(cobroActivo.value.token));
+    } else anunciarQr(null);
+  },
+  { immediate: true },
+);
+
+// --- Cobrar con tarjeta ------------------------------------------------------
+// monto -> leer -> escribir? -> pin -> pagando -> hecho | rechazado
+
+const pasoTarjeta = ref('monto');
+const tarjeta = ref({ monto: '', numero: '', escrito: '', pin: '' });
+const resultadoTarjeta = ref(null);
+const avisoTarjeta = ref('');
+const campoTarjeta = ref(null);
+
+function reiniciarTarjeta() {
+  pasoTarjeta.value = 'monto';
+  tarjeta.value = { monto: '', numero: '', escrito: '', pin: '' };
+  resultadoTarjeta.value = null;
+  avisoTarjeta.value = '';
+}
+
+function continuarTarjeta() {
+  const monto = montoValido(tarjeta.value.monto);
+  if (!monto) {
+    avisoTarjeta.value = 'Escribe cuánto cobras. Por ejemplo: 18,50';
+    return;
+  }
+  avisoTarjeta.value = '';
+  tarjeta.value.monto = monto;
+  pasoTarjeta.value = 'leer';
+}
+
+function tarjetaLeida(numero) {
+  const n = leerTarjeta(numero);
+  if (!n) {
+    avisoTarjeta.value = 'Ese número no es de una tarjeta StellarRail. Empieza con SR.';
+    return;
+  }
+  avisoTarjeta.value = '';
+  tarjeta.value.numero = n;
+  tarjeta.value.pin = '';
+  pasoTarjeta.value = 'pin';
+}
+
+async function escribirTarjeta() {
+  pasoTarjeta.value = 'escribir';
+  await nextTick();
+  campoTarjeta.value?.focus();
+}
+
+async function cobrarConTarjeta() {
+  avisoTarjeta.value = '';
+  pasoTarjeta.value = 'pagando';
+  try {
+    const r = await api.pagar({
+      tarjeta: tarjeta.value.numero,
+      pin: tarjeta.value.pin,
+      monto: tarjeta.value.monto,
+      rubro: cobroRubro.value,
+    });
+    resultadoTarjeta.value = r;
+    pasoTarjeta.value = r.pagado ? 'hecho' : 'rechazado';
+    if (r.pagado && voz.value) {
+      hablar(`Pago hecho: ${enPalabras(r.monto)}. Le quedan ${enPalabras(r.saldoRestante ?? 0)}.`);
+    }
+    avisarCambio();
+    cargar();
+  } catch (e) {
+    if (e.datos?.requierePin) {
+      avisoTarjeta.value = e.message;
+      tarjeta.value.pin = '';
+      pasoTarjeta.value = 'pin';
+      return;
+    }
+    resultadoTarjeta.value = { pagado: false, controlDe: 'error', mensaje: e.message };
+    pasoTarjeta.value = 'rechazado';
+  }
+}
+
+const motivoTarjeta = computed(() => {
+  const r = resultadoTarjeta.value;
+  if (!r) return '';
+  if (r.controlDe === 'red') return r.transaccion?.mensaje ?? 'El pago no pasó.';
+  return r.mensaje;
+});
 
 // --- Lo recibido, leido de la red ------------------------------------------
 
@@ -132,6 +216,7 @@ async function cargar() {
     // Se conserva lo ultimo que se vio: el aviso en vivo sigue funcionando.
   }
 }
+watch(() => cercano.cambios, cargar);
 const deHoy = computed(() => {
   const hoy = new Date().toDateString();
   return recibidos.value.filter((p) => new Date(p.fecha).toDateString() === hoy);
@@ -178,6 +263,7 @@ watch(() => yo.value?.id, () => {
 onUnmounted(() => {
   dejarDeEscuchar();
   clearInterval(reloj);
+  anunciarQr(null);
 });
 
 const hora = (f) => new Date(f).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
@@ -185,52 +271,8 @@ const imprimir = () => window.print();
 </script>
 
 <template>
-  <!-- La empresa, en la demostracion con un solo dispositivo. -->
-  <section v-if="esEmpresa && estado.comercios.length" class="tarjeta">
-    <div class="campo">
-      <label for="cual">Ver como</label>
-      <select id="cual" v-model="elegido">
-        <option v-for="c in estado.comercios" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-      </select>
-    </div>
-  </section>
-
-  <!--
-    Registro: solo el nombre es obligatorio. Muchas bodegas de Lima no tienen
-    RUC o estan en el RUS: exigirlo dejaria fuera justo al usuario que decimos
-    atender.
-  -->
-  <section v-if="!yo || esEmpresa" class="tarjeta">
-    <template v-if="!esEmpresa">
-      <h2>Acepta vales en tu tienda</h2>
-      <p>Sin POS y sin comisión para ti. Registra tu tienda y la empresa la revisará.</p>
-    </template>
-    <h2 v-else>{{ estado.comercios.length ? 'Registrar otra tienda' : 'Registrar una tienda' }}</h2>
-    <form @submit.prevent="registrar">
-      <div class="campo">
-        <label for="cn">Nombre de la tienda</label>
-        <input id="cn" v-model="nuevo.nombre" required placeholder="Bodega Don Julio">
-      </div>
-      <div class="campo">
-        <label for="cr">¿Qué vendes más?</label>
-        <select id="cr" v-model="nuevo.rubro">
-          <option v-for="(n, clave) in RUBROS" :key="clave" :value="clave">{{ n }}</option>
-        </select>
-      </div>
-      <div class="pareja">
-        <div class="campo">
-          <label for="cd">Distrito <span class="apagado">(si quieres)</span></label>
-          <input id="cd" v-model="nuevo.distrito" placeholder="San Juan de Lurigancho">
-        </div>
-        <div class="campo">
-          <label for="ct">Teléfono <span class="apagado">(si quieres)</span></label>
-          <input id="ct" v-model="nuevo.telefono" inputmode="tel" autocomplete="tel" placeholder="999 999 999">
-        </div>
-      </div>
-      <button :class="{ principal: !esEmpresa }" :disabled="trabajando || !nuevo.nombre.trim()">
-        {{ trabajando ? 'Un momento…' : 'Registrar' }}
-      </button>
-    </form>
+  <section v-if="!yo" class="tarjeta">
+    <p class="cargando">Cargando tu tienda…</p>
   </section>
 
   <template v-if="yo">
@@ -265,9 +307,12 @@ const imprimir = () => window.print();
 
     <section class="tarjeta">
       <h2>Cobrar</h2>
-      <div class="modos" role="tablist" aria-label="Forma de cobrar">
+      <div class="modos tres-modos" role="tablist" aria-label="Forma de cobrar">
         <button role="tab" :aria-selected="modo === 'monto'" @click="modo = 'monto'">
-          <Icono nombre="moneda" /> Con monto
+          <Icono nombre="moneda" /> Con QR
+        </button>
+        <button role="tab" :aria-selected="modo === 'tarjeta'" @click="modo = 'tarjeta'">
+          <Icono nombre="teclado" /> Con tarjeta
         </button>
         <button role="tab" :aria-selected="modo === 'fijo'" @click="modo = 'fijo'">
           <Icono nombre="qr" /> QR fijo
@@ -320,7 +365,92 @@ const imprimir = () => window.print();
           <p class="esperando" aria-live="polite">
             <span class="punto" aria-hidden="true" /> Esperando el pago · vence en {{ minutos }}
           </p>
+          <a class="boton si ancho" :href="whatsapp" target="_blank" rel="noopener">
+            <Icono nombre="mensaje" /> Enviar el cobro por WhatsApp
+          </a>
           <button class="secundario" @click="nuevoCobro"><Icono nombre="x" /> Cancelar cobro</button>
+        </div>
+      </div>
+
+      <!-- Con tarjeta: para quien no tiene smartphone. -->
+      <div v-else-if="modo === 'tarjeta'" role="tabpanel">
+        <form v-if="pasoTarjeta === 'monto'" @submit.prevent="continuarTarjeta">
+          <label for="tm" class="pregunta">¿Cuánto cobras?</label>
+          <div class="campo-monto">
+            <span aria-hidden="true">S/</span>
+            <input
+              id="tm" v-model="tarjeta.monto" class="numero-grande"
+              inputmode="decimal" autocomplete="off" placeholder="0,00" required>
+          </div>
+          <p class="apagado pequeno">Con tarjeta se pueden pagar hasta S/ {{ TOPE_DIARIO_TARJETA }} por día, y siempre con PIN.</p>
+          <p v-if="avisoTarjeta" class="aviso no" role="alert">{{ avisoTarjeta }}</p>
+          <button class="principal"><Icono nombre="check" :tamano="26" /> Continuar</button>
+        </form>
+
+        <template v-else-if="pasoTarjeta === 'leer'">
+          <p class="destino">Cobro de {{ soles(tarjeta.monto) }}</p>
+          <p v-if="avisoTarjeta" class="aviso no" role="alert">{{ avisoTarjeta }}</p>
+          <Escaner
+            busca="tarjeta"
+            @leido="(l) => tarjetaLeida(l.numero)"
+            @escribir="escribirTarjeta"
+            @cancelar="reiniciarTarjeta" />
+        </template>
+
+        <form v-else-if="pasoTarjeta === 'escribir'" @submit.prevent="tarjetaLeida(tarjeta.escrito)">
+          <button type="button" class="enlace atras" @click="pasoTarjeta = 'leer'"><Icono nombre="atras" /> Atrás</button>
+          <label for="tn" class="pregunta">Número de la tarjeta</label>
+          <p class="apagado">Está impreso en la tarjeta. Empieza con SR.</p>
+          <input
+            id="tn" ref="campoTarjeta" v-model="tarjeta.escrito" class="numero-grande"
+            autocomplete="off" autocapitalize="characters" placeholder="SR-XXXX-XXXX" required>
+          <p v-if="avisoTarjeta" class="aviso no" role="alert">{{ avisoTarjeta }}</p>
+          <button class="principal">Continuar</button>
+        </form>
+
+        <form v-else-if="pasoTarjeta === 'pin'" class="confirmacion" @submit.prevent="cobrarConTarjeta">
+          <p class="aviso espera"><strong>Pasa el equipo al cliente</strong>Que marque su PIN sin que nadie lo vea.</p>
+          <p class="monto-grande">{{ soles(tarjeta.monto) }}</p>
+          <p class="destino">a {{ yo.nombre }}</p>
+          <Pin v-model="tarjeta.pin" id="pin-tarjeta" etiqueta="Cliente: marca tu PIN" teclado />
+          <p v-if="avisoTarjeta" class="aviso no" role="alert">{{ avisoTarjeta }}</p>
+          <button class="principal si" :disabled="tarjeta.pin.length !== 4">
+            <Icono nombre="check" :tamano="28" /> Pagar
+          </button>
+          <button type="button" class="secundario" @click="reiniciarTarjeta"><Icono nombre="x" /> Cancelar</button>
+        </form>
+
+        <div v-else-if="pasoTarjeta === 'pagando'" class="resultado" aria-live="polite">
+          <div class="girando" aria-hidden="true" />
+          <p class="titulo-resultado">Cobrando…</p>
+          <p class="apagado">Tarda unos segundos.</p>
+        </div>
+
+        <div v-else-if="pasoTarjeta === 'hecho'" class="resultado ok" role="status">
+          <div class="sello ok"><Icono nombre="check" :tamano="56" /></div>
+          <p class="titulo-resultado">¡Pago hecho!</p>
+          <p class="monto-grande">{{ soles(resultadoTarjeta.monto) }}</p>
+          <p>Pagó {{ resultadoTarjeta.pagador }}.</p>
+          <p v-if="resultadoTarjeta.saldoRestante">Le quedan <b>{{ soles(resultadoTarjeta.saldoRestante) }}</b> en su vale.</p>
+          <button class="principal" @click="reiniciarTarjeta">Nuevo cobro</button>
+          <details>
+            <summary>Ver comprobante</summary>
+            <Prueba :tx="resultadoTarjeta.transaccion" />
+          </details>
+        </div>
+
+        <div v-else-if="pasoTarjeta === 'rechazado'" class="resultado no" role="alert">
+          <div class="sello no"><Icono nombre="x" :tamano="56" /></div>
+          <p class="titulo-resultado">No se pudo cobrar</p>
+          <p class="motivo">{{ motivoTarjeta }}</p>
+          <p><b>No se le cobró nada al cliente.</b></p>
+          <p v-if="resultadoTarjeta.controlDe === 'red'" class="apagado pequeno">Lo rechazó la red de pagos, no esta aplicación.</p>
+          <p v-else-if="resultadoTarjeta.controlDe === 'aplicacion'" class="apagado pequeno">Es una regla del programa: no se envió ningún pago.</p>
+          <button class="principal" @click="reiniciarTarjeta">Entendido</button>
+          <details v-if="resultadoTarjeta.transaccion">
+            <summary>Detalles</summary>
+            <Prueba :tx="resultadoTarjeta.transaccion" />
+          </details>
         </div>
       </div>
 

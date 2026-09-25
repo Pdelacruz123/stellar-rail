@@ -15,13 +15,15 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { api, saldoEnLaRed } from '../api.js';
 import {
-  estado, accion, enPalabras, fecha, hablar, montoValido, programaVigente,
-  recargar, refrescarYo, soles,
+  estado, enPalabras, fecha, hablar, montoValido, programaVigente, recargar, soles,
 } from '../estado.js';
 import { verCobro } from '../enlaces.js';
+import { avisarCambio, cercano } from '../marco.js';
 import { RUBROS } from '../../lib/rubros.js';
+import { UMBRAL_PIN } from '../../lib/reglas.js';
 import Escaner from '../Escaner.vue';
 import Icono from '../Icono.vue';
+import Pin from '../Pin.vue';
 import Prueba from '../Prueba.vue';
 
 const props = defineProps({
@@ -29,26 +31,14 @@ const props = defineProps({
   cobro: { type: String, default: '' },
 });
 
-const esEmpresa = computed(() => estado.yo?.rol === 'empresa');
-const elegido = ref(null);
-const nombre = ref('');
-const trabajando = ref(false);
-
-// Quien paga: el trabajador de este celular, o el que elige la empresa.
-const yo = computed(() => {
-  if (!esEmpresa.value) return estado.beneficiarios[0] ?? null;
-  return estado.beneficiarios.find((b) => b.id === elegido.value) ?? null;
-});
-watch(() => estado.beneficiarios, (lista) => {
-  if (esEmpresa.value && elegido.value === null && lista.length) elegido.value = lista[0].id;
-}, { immediate: true, deep: true });
+// El trabajador de este celular. La API solo le devuelve a el.
+const yo = computed(() => estado.beneficiarios[0] ?? null);
 
 const primerNombre = computed(() => (yo.value?.nombre ?? '').split(' ')[0]);
 const programa = computed(() => programaVigente());
 const rubrosDelPrograma = computed(() => (programa.value?.rubros ?? [])
   .map((r) => RUBROS[r] ?? r).join(', ').toLowerCase());
-const afiliados = computed(() => estado.comercios.filter((c) => (
-  esEmpresa.value ? c.estado === 'verificado' : c.afiliado)));
+const afiliados = computed(() => estado.comercios.filter((c) => c.afiliado));
 const puedePagar = computed(() => yo.value?.estado === 'verificado' && !enLaRed.value?.congelado);
 
 // --- Saldo, leido de la red cada vez. Nunca lo guardamos. -------------------
@@ -65,8 +55,14 @@ async function cargarSaldo() {
     errorSaldo.value = e.message;
   }
 }
-// Por el id, no por el objeto: cada recarga crea objetos nuevos.
-watch(() => yo.value?.id, cargarSaldo, { immediate: true });
+// Por valores simples, no por el objeto: cada recarga crea objetos nuevos.
+// Se vuelve a leer al ser aprobado, al recibir el vale o si otra pantalla
+// de la demostracion cambio algo.
+watch(
+  [() => yo.value?.id, () => yo.value?.estado, () => programa.value?.entregados, () => cercano.cambios],
+  cargarSaldo,
+  { immediate: true },
+);
 
 function escucharSaldo() {
   if (!enLaRed.value) return;
@@ -75,24 +71,13 @@ function escucharSaldo() {
     : `Tienes ${enPalabras(enLaRed.value.saldo)} en tu vale.`);
 }
 
-async function registrar() {
-  trabajando.value = true;
-  try {
-    const r = await accion(() => api.registrarBeneficiario(nombre.value.trim()));
-    if (esEmpresa.value) elegido.value = r.beneficiario.id;
-    else await refrescarYo();
-    nombre.value = '';
-  } finally {
-    trabajando.value = false;
-  }
-}
-
 // --- Pagar: una pantalla por paso -------------------------------------------
 // inicio -> escanear | codigo -> monto -> confirmar -> pagando -> hecho | rechazado
 
 const pantalla = ref('inicio');
 const destino = ref(null);
 const pago = ref({ monto: '', cobro: null, rubro: null });
+const pin = ref('');
 const codigoEscrito = ref('');
 const aviso = ref('');
 const resultado = ref(null);
@@ -112,13 +97,12 @@ function reiniciar() {
   pantalla.value = 'inicio';
   destino.value = null;
   pago.value = { monto: '', cobro: null, rubro: null };
+  pin.value = '';
   codigoEscrito.value = '';
   aviso.value = '';
   resultado.value = null;
   // Se limpia el enlace del QR: si se recarga la pagina, no vuelve a cobrar.
-  if (props.codigo || props.cobro) {
-    window.location.hash = esEmpresa.value ? '#/beneficiario' : '#/';
-  }
+  if (props.codigo || props.cobro) window.location.hash = '#/';
 }
 
 /** QR fijo o codigo escrito: se sabe la tienda, falta el monto. */
@@ -190,22 +174,35 @@ function continuarMonto() {
   pantalla.value = 'confirmar';
 }
 
+// Montos grandes piden el PIN: si alguien toma el celular desbloqueado, no
+// puede vaciar el vale de golpe. Los pequenos, como en Yape, solo confirmar.
+const necesitaPin = computed(() => Number(pago.value.monto) > UMBRAL_PIN);
+
 const rubroCubierto = computed(() => !programa.value
   || (programa.value.rubros ?? []).includes(pago.value.rubro ?? destino.value?.rubro));
 
 async function confirmar() {
+  aviso.value = '';
   pantalla.value = 'pagando';
   try {
     const r = await api.pagar({
       ...(pago.value.cobro
         ? { cobro: pago.value.cobro }
         : { codigo: destino.value.codigo_corto, monto: pago.value.monto }),
-      ...(esEmpresa.value ? { beneficiarioId: yo.value.id } : {}),
+      ...(necesitaPin.value ? { pin: pin.value } : {}),
     });
     resultado.value = r;
     await cargarSaldo();
     pantalla.value = r.pagado ? 'hecho' : 'rechazado';
+    avisarCambio();
   } catch (e) {
+    if (e.datos?.requierePin) {
+      // PIN equivocado o bloqueado: se queda en la confirmacion para reintentar.
+      aviso.value = e.message;
+      pin.value = '';
+      pantalla.value = 'confirmar';
+      return;
+    }
     resultado.value = { pagado: false, controlDe: 'error', mensaje: e.message };
     pantalla.value = 'rechazado';
   }
@@ -230,36 +227,8 @@ function escucharResultado() {
 </script>
 
 <template>
-  <!-- La empresa, en la demostracion con un solo dispositivo. -->
-  <section v-if="esEmpresa" class="tarjeta">
-    <div v-if="estado.beneficiarios.length" class="campo">
-      <label for="quien">Ver como</label>
-      <select id="quien" v-model="elegido">
-        <option v-for="b in estado.beneficiarios" :key="b.id" :value="b.id">{{ b.nombre }}</option>
-      </select>
-    </div>
-    <form class="en-linea" @submit.prevent="registrar">
-      <div class="campo" style="margin:0;flex:1">
-        <label for="nomE">Registrar un trabajador</label>
-        <input id="nomE" v-model="nombre" placeholder="María Quispe">
-      </div>
-      <button :disabled="trabajando || !nombre.trim()">Registrar</button>
-    </form>
-  </section>
-
-  <!-- Registro: un solo campo. -->
-  <section v-if="!yo && !esEmpresa" class="tarjeta">
-    <h2>Recibe tu vale de alimentos</h2>
-    <p>Tu empresa te invitó. Escribe tu nombre y listo.</p>
-    <form @submit.prevent="registrar">
-      <div class="campo">
-        <label for="nom">Tu nombre</label>
-        <input id="nom" v-model="nombre" autocomplete="name" required placeholder="María Quispe">
-      </div>
-      <button class="principal" :disabled="trabajando || !nombre.trim()">
-        {{ trabajando ? 'Un momento…' : 'Registrarme' }}
-      </button>
-    </form>
+  <section v-if="!yo" class="tarjeta">
+    <p class="cargando">Cargando tu vale…</p>
   </section>
 
   <template v-if="yo">
@@ -276,8 +245,19 @@ function escucharResultado() {
           <strong>Tu registro no fue aprobado</strong>
           Consulta con Recursos Humanos.
         </div>
+        <div v-else-if="yo.estado === 'baja'" class="aviso no">
+          <strong>Ya no recibes vales de esta empresa</strong>
+          Tu empresa te dio de baja. Si crees que es un error, consulta con Recursos Humanos.
+        </div>
+        <div v-else-if="enLaRed?.autorizado && Number(enLaRed.saldo) === 0 && !programa?.entregados" class="aviso espera">
+          <strong>Ya estás aprobado</strong>
+          Pronto tu empresa te entregará el vale.
+        </div>
 
-        <div v-if="enLaRed" :class="['vale', { congelado: enLaRed.congelado }]">
+        <!-- El vale solo se muestra a quien esta aprobado: pendiente, rechazado o
+             de baja, ya lo dice el aviso de arriba. -->
+        <template v-if="yo.estado !== 'verificado'" />
+        <div v-else-if="enLaRed" :class="['vale', { congelado: enLaRed.congelado }]">
           <span>{{ enLaRed.congelado ? 'Tu vale venció' : (programa?.nombre ?? 'Tu vale') }}</span>
           <b>{{ soles(enLaRed.saldo) }}</b>
           <span v-if="!enLaRed.congelado && programa">Úsalo hasta el {{ fecha(programa.vence_el) }}</span>
@@ -300,7 +280,7 @@ function escucharResultado() {
             <Icono nombre="teclado" /> Pagar con código
           </button>
         </template>
-        <button class="enlace" @click="escucharSaldo">
+        <button v-if="yo.estado === 'verificado'" class="enlace" @click="escucharSaldo">
           <Icono nombre="altavoz" /> Escuchar mi saldo
         </button>
       </section>
@@ -323,6 +303,7 @@ function escucharResultado() {
     <!-- ============ ESCANEAR ============ -->
     <section v-else-if="pantalla === 'escanear'" class="tarjeta">
       <Escaner
+        busca="pago"
         @leido="alLeer"
         @escribir="pantalla = 'codigo'; enfocar()"
         @cancelar="reiniciar" />
@@ -374,9 +355,16 @@ function escucharResultado() {
         Solo se puede usar en {{ rubrosDelPrograma }}.
       </div>
 
-      <button v-if="rubroCubierto" class="principal si" @click="confirmar">
-        <Icono nombre="check" :tamano="28" /> Sí, pagar
-      </button>
+      <form v-if="rubroCubierto" @submit.prevent="confirmar">
+        <template v-if="necesitaPin">
+          <p class="apagado">Es más de S/ {{ UMBRAL_PIN }}: para cuidarte, escribe tu PIN.</p>
+          <Pin v-model="pin" id="pin-pagar" />
+        </template>
+        <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
+        <button class="principal si" :disabled="necesitaPin && pin.length !== 4">
+          <Icono nombre="check" :tamano="28" /> Sí, pagar
+        </button>
+      </form>
       <button class="secundario" @click="reiniciar">
         <Icono nombre="x" /> {{ rubroCubierto ? 'No, cancelar' : 'Volver' }}
       </button>
