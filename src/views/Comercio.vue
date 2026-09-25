@@ -237,7 +237,16 @@ function cambiarVoz() {
   if (voz.value) hablar('Listo. Te avisaré en voz alta cuando te paguen.');
 }
 
+// El aviso de "te pagaron" se va solo: si se quedara, el siguiente cobro
+// mostraria arriba un monto viejo.
 const recibido = ref(null);
+let ocultarAviso = null;
+function avisarPago(pago) {
+  recibido.value = pago;
+  clearTimeout(ocultarAviso);
+  ocultarAviso = setTimeout(() => { recibido.value = null; }, 15000);
+}
+watch(modo, () => { recibido.value = null; });
 let dejarDeEscuchar = () => {};
 // Por el id: si no, cada recarga de datos cortaria el flujo en vivo y
 // borraria el aviso de "te pagaron".
@@ -249,7 +258,7 @@ watch(() => yo.value?.id, () => {
   if (!c || !estado.yo) return;
   const { horizon, activo, emisor } = estado.yo;
   dejarDeEscuchar = escucharPagos(horizon, c.cuenta_publica, activo, emisor, (pago) => {
-    recibido.value = pago;
+    avisarPago(pago);
     navigator.vibrate?.([120, 60, 120]);
     if (voz.value) hablar(`Recibiste ${enPalabras(pago.monto)}.`);
     if (cobroActivo.value && !cobroActivo.value.pagado
@@ -287,8 +296,13 @@ const imprimir = () => window.print();
       </div>
       <div v-if="yo.estado === 'pendiente'" class="aviso espera">
         <strong>Todavía no puedes cobrar</strong>
-        La empresa aún no aprobó tu tienda. Si alguien intenta pagarte ahora,
-        el pago no pasará.
+        La empresa aún no aprobó tu tienda. Cuando lo haga, aquí aparecerá
+        todo para cobrar. Si alguien intenta pagarte antes, el pago no pasará.
+      </div>
+      <div v-if="yo.estado === 'pendiente'" class="cobro-activo" style="margin-top:8px">
+        <p class="apagado" style="margin-bottom:0">Código de tu tienda</p>
+        <p class="codigo">{{ agrupar(yo.codigo_corto) }}</p>
+        <p class="apagado pequeno">Tus clientes pagarán con este código o con tu QR.</p>
       </div>
       <div v-else-if="yo.estado === 'rechazado'" class="aviso no">
         <strong>Tu tienda no fue aprobada</strong>
@@ -305,6 +319,8 @@ const imprimir = () => window.print();
       </span>
     </div>
 
+    <!-- Cobrar, avisos y lo de hoy: solo para una tienda afiliada. -->
+    <template v-if="yo.estado === 'verificado'">
     <section class="tarjeta">
       <h2>Cobrar</h2>
       <div class="modos tres-modos" role="tablist" aria-label="Forma de cobrar">
@@ -412,7 +428,7 @@ const imprimir = () => window.print();
           <p class="aviso espera"><strong>Pasa el equipo al cliente</strong>Que marque su PIN sin que nadie lo vea.</p>
           <p class="monto-grande">{{ soles(tarjeta.monto) }}</p>
           <p class="destino">a {{ yo.nombre }}</p>
-          <Pin v-model="tarjeta.pin" id="pin-tarjeta" etiqueta="Cliente: marca tu PIN" teclado />
+          <Pin v-model="tarjeta.pin" id="pin-tarjeta" etiqueta="Cliente: marca tu PIN" teclado destacado />
           <p v-if="avisoTarjeta" class="aviso no" role="alert">{{ avisoTarjeta }}</p>
           <button class="principal si" :disabled="tarjeta.pin.length !== 4">
             <Icono nombre="check" :tamano="28" /> Pagar
@@ -487,11 +503,11 @@ const imprimir = () => window.print();
         </div>
         <a :href="explorador(p.hash)" target="_blank" rel="noopener" class="pequeno">comprobante</a>
       </div>
-      <p v-if="enLaRed && !recibidos.length" class="apagado">Todavía no recibiste pagos.</p>
-      <p v-if="enLaRed" class="apagado pequeno" style="margin-top:10px">
-        Total en vales: {{ soles(enLaRed.saldo) }}
+      <p v-if="enLaRed && recibidos.length" class="apagado pequeno" style="margin-top:10px">
+        Total recibido en vales: {{ soles(enLaRed.saldo) }}
       </p>
     </section>
+    </template>
 
     <!-- El cartel que se imprime: solo aparece al imprimir. -->
     <div class="cartel" aria-hidden="true">
