@@ -89,7 +89,7 @@ No hay contrato inteligente. Las tres garantías son capacidades del protocolo, 
 
 El track pide controles de cumplimiento. La respuesta de StellarRail no es un campo `verificado` en una tabla: **la aprobación ejecuta la autorización en la red.**
 
-1. El beneficiario abre la invitación de su empresa en su celular y escribe su nombre. La API le crea una cuenta y su trustline hacia `ALIM`, y la guarda en `pendiente`.
+1. El beneficiario abre la invitación de su empresa en su celular, escribe su nombre y su celular y elige un PIN. La API le crea una cuenta y su trustline hacia `ALIM`, y la guarda en `pendiente`.
 2. La trustline **nace sin autorizar**: la cuenta existe y pidió poder recibir el vale, pero todavía no puede. Tener el activo exige dos voluntades, la de la cuenta y la del emisor.
 3. El emisor revisa su bandeja.
 4. **Si aprueba**, la API ejecuta `autorizar(cuenta)` en la red. El estado pasa a `verificado` y se guarda el hash de esa transacción. Desde ese momento la cuenta puede recibir el vale.
@@ -114,6 +114,7 @@ En el MVP la verificación es **simulada**: no se procesan datos reales de ident
 | **Con saldo** | El emisor entrega · `Payment` | Puede pagar en comercios afiliados, tantas veces como quiera |
 | **Congelado** | Vence el programa · `Set Trust Line Flags` | Conserva el saldo pero no puede moverlo |
 | **Anulado** | `Clawback` | Saldo en cero. Fin del ciclo |
+| **De baja** | La empresa lo da de baja · congelar y anular en una transacción | Nada. Su tarjeta se anula y sus sesiones se cierran |
 
 Los rechazos que hace cumplir la red, con el código que devuelve:
 
@@ -130,14 +131,47 @@ Los dos primeros están reproducidos y verificados en testnet. Un rechazo a nive
 
 ## 5. Datos
 
-Cuatro tablas. Ninguna guarda saldos ni claves secretas.
+Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` y `cobros_usados` (para no emitir ni cobrar dos veces) y `candados` (el turno del emisor).
 
 ```sql
--- Aislamiento de la demo: cada visitante recibe sus propias cuentas,
--- para que dos personas no se pisen el recorrido.
+-- El espacio de una empresa. Cada demostracion es un espacio propio, para
+-- que dos visitantes no se pisen el recorrido.
 CREATE TABLE sesiones (
   id          TEXT PRIMARY KEY,
+  nombre      TEXT,
+  es_demo     BOOLEAN NOT NULL DEFAULT false,
   creada_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Quien puede entrar: la empresa con correo, trabajador y tienda con
+-- celular. El PIN o la contrasena, cifrados con scrypt y una sal propia.
+CREATE TABLE usuarios (
+  id              SERIAL PRIMARY KEY,
+  sesion_id       TEXT REFERENCES sesiones(id),
+  rol             TEXT NOT NULL,            -- empresa | beneficiario | comercio
+  ref_id          INTEGER,                  -- el beneficiario o el comercio
+  identificador   TEXT NOT NULL UNIQUE,     -- celular o correo
+  hash            TEXT NOT NULL,
+  sal             TEXT NOT NULL,
+  version         INTEGER NOT NULL DEFAULT 1,  -- subirla cierra todas sus sesiones
+  intentos        INTEGER NOT NULL DEFAULT 0,
+  bloqueado_hasta TIMESTAMPTZ
+);
+
+-- Tarjetas impresas de quien no tiene smartphone, y sus pagos del dia
+-- para el tope de S/ 100.
+CREATE TABLE tarjetas (
+  numero          TEXT PRIMARY KEY,         -- SR-XXXX-XXXX
+  sesion_id       TEXT REFERENCES sesiones(id),
+  beneficiario_id INTEGER NOT NULL,
+  estado          TEXT NOT NULL DEFAULT 'activa'   -- activa | anulada
+);
+CREATE TABLE pagos_tarjeta (
+  id              SERIAL PRIMARY KEY,
+  numero          TEXT NOT NULL,
+  beneficiario_id INTEGER NOT NULL,
+  monto           NUMERIC(18,7) NOT NULL,
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE programas (
@@ -156,7 +190,7 @@ CREATE TABLE beneficiarios (
   sesion_id       TEXT REFERENCES sesiones(id),
   nombre          TEXT NOT NULL,
   cuenta_publica  TEXT NOT NULL,        -- G... La secreta se deriva, no se guarda
-  estado          TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente|verificado|rechazado
+  estado          TEXT NOT NULL DEFAULT 'pendiente',  -- pendiente|verificado|rechazado|baja
   hash_verificacion TEXT,               -- la transacción que lo autorizó
   creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -196,23 +230,24 @@ CREATE TABLE eventos (
 
 ## 6. API
 
-Seis funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la petición:
+Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la petición:
 
 | Petición | Qué hace | Quién |
 |---|---|---|
-| `GET /api/sesion` | Quién soy. En la primera visita crea el espacio de una empresa nueva | Todos |
-| `POST /api/sesion` `{token}` | Entrar con una invitación, como trabajador o comercio | Invitados |
-| `GET /api/beneficiarios` | La empresa ve a todos; un trabajador, solo a sí mismo | Empresa, trabajador |
-| `POST /api/beneficiarios` | Registrarse con una invitación: crea su cuenta y su trustline, en `pendiente` | Empresa, trabajador |
-| `POST /api/beneficiarios` `{accion:'verificar'}` | Aprueba, y al aprobar **ejecuta `autorizar` en la red**, o rechaza | Empresa |
+| `GET /api/sesion` | Quién soy, o nadie | Todos |
+| `POST /api/sesion` | `entrar` (celular + PIN o correo + contraseña), `salir`, `cerrarTodas`, `registrarEmpresa`, ver una invitación, `restablecer` el PIN | Según el caso |
+| `POST /api/demo` | Crea la demostración: empresa, dos trabajadores y tres tiendas, con sus accesos | Cualquiera, hasta 30 por hora |
+| `GET /api/beneficiarios` | La empresa ve a todos, con su celular y su tarjeta; un trabajador, solo a sí mismo | Empresa, trabajador |
+| `POST /api/beneficiarios` | Registrarse con una invitación (nombre, celular y PIN): crea su cuenta y su trustline, en `pendiente` | Invitados, empresa |
+| `POST /api/beneficiarios` `{accion}` | `verificar` (al aprobar **ejecuta `autorizar` en la red**), `baja`, `restablecer`, `tarjeta`, `anularTarjeta` | Empresa |
 | `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro y su código de 6 dígitos | Según el caso |
 | `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: firmado, caduca a los 10 minutos | Tienda |
 | `GET /api/programas` | Programas del espacio, con sus rubros y su vencimiento | Todos |
 | `POST /api/programas` | Crear, `entregar` o `vencer` | Empresa |
-| `POST /api/pagos` | El trabajador paga un cobro con monto (`{cobro}`) o un QR fijo o código (`{codigo, monto}`) | Trabajador |
+| `POST /api/pagos` | El trabajador paga un cobro con monto (`{cobro}`) o un QR fijo o código (`{codigo, monto}`), con PIN por encima de S/ 50. La tienda cobra con tarjeta (`{tarjeta, pin, monto}`) | Trabajador, tienda |
 | `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
-**Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción serían 11, más la del vencimiento programado: justo en el límite y sin margen, además de once paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 6.
+**Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción se pasaría del límite, además de tener muchos paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7.
 
 **`POST /api/pagos` no comprueba si el comercio está afiliado.** Envía el pago y traduce lo que responda la red. Comprobarlo antes convertiría una regla del protocolo en una regla nuestra. Un pago no hecho responde `200` y no un error, y el campo `controlDe` dice quién lo frenó: `red`, con su hash y su código, o `aplicacion`, si el programa no cubre ese rubro, sin transacción. Las dos cosas no se confunden.
 
@@ -260,13 +295,41 @@ Para anular hay que saber cuánto queda. Si se lee el saldo y luego se congela e
 
 Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacción entera y no se aplica nada. Se vuelve a leer y se reintenta. Comprobado provocando la carrera a propósito en testnet.
 
-### Acceso sin contraseñas
+### Acceso según el riesgo
 
-Ni la empresa, ni el trabajador, ni la bodega escriben una clave. Quien abre la aplicación sin traer un espacio crea el de una empresa nueva y es su emisor. La empresa invita con dos enlaces, uno para trabajadores y otro para comercios, que se comparten por WhatsApp o se muestran como QR. Cada persona lo abre en su celular y entra directo a su pantalla, sin pestañas ni menús que no le sirven.
+Cada quien entra con lo que corresponde a lo que puede mover:
 
-El perfil de cada dispositivo viaja en una cookie **firmada con `MASTER_SEED` y atada a su espacio**. Conocer el identificador de un espacio ajeno no da acceso a nada: sin la firma, se recibe un espacio nuevo y vacío. Una invitación tampoco se puede convertir en otra: cambiar su rol o su espacio invalida la firma. Invitar no aprueba a nadie; el control sigue siendo la verificación, que se ejecuta en la red.
+| Quién | Cómo entra | Por qué |
+|---|---|---|
+| Empresa | Correo y contraseña | Maneja el dinero de todos |
+| Trabajador y tienda | Celular y un PIN de 4 números | Es lo que alguien que no se maneja con la tecnología puede recordar |
 
-Así el jurado entra sin credenciales y ningún visitante puede estropear la demostración de otro.
+El PIN y la contraseña se guardan cifrados con **scrypt** y una sal por usuario. Cinco intentos fallidos bloquean el acceso **15 minutos**; el contador es el mismo para entrar y para pagar, así que nadie prueba PIN por un camino cuando el otro ya lo bloqueó. Se rechazan 1234, 4321 y los dígitos repetidos, y nada más: cada regla extra es una traba para quien menos se maneja con el celular.
+
+Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el usuario y su *versión*. Subir la versión invalida todas sus credenciales: así funciona «cerrar sesión en todos mis dispositivos», y también cambiar el PIN o dar de baja.
+
+**Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, y el jurado no podría probarlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos.
+
+La empresa invita con dos enlaces firmados, uno para trabajadores y otro para tiendas. Invitar no aprueba a nadie: el control sigue siendo la verificación, que se ejecuta en la red.
+
+### La demostración y las tres pantallas
+
+**Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y muestra el celular y el PIN de cada una. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
+
+La vista de tres pantallas pone a la empresa, la tienda y el trabajador lado a lado, cada una en su propio marco con su propia sesión. La credencial de cada marco viaja en el nombre del marco (`window.name`), que nunca se envía al servidor, y la API la recibe en una cabecera que tiene prioridad sobre la cookie. Los marcos se hablan con `postMessage`, solo del mismo origen: la tienda anuncia el QR que muestra y el trabajador lo «escanea» con un clic, porque una computadora no puede apuntar su cámara a su propia pantalla.
+
+### Sin smartphone
+
+Quien no tiene smartphone recibe una **tarjeta impresa** con un QR y un número (`SR-XXXX-XXXX`). La tienda escribe el monto, escanea la tarjeta y el trabajador marca su PIN en el teclado de la tienda. La tarjeta sola no paga: siempre pide PIN, tiene un **tope de S/ 100 al día** y la empresa la puede anular. El tope se reserva antes de enviar, dentro de una transacción con un candado por trabajador, para que dos cobros simultáneos no lo salten.
+
+Con smartphone, el PIN se pide solo por encima de S/ 50. Por debajo basta confirmar, como en Yape: el celular ya tiene la sesión abierta.
+
+### Si el QR no se puede escanear
+
+- **Subir una foto** del código, por ejemplo la que llegó por WhatsApp.
+- **Pegar el enlace** del cobro.
+- **Escribir** el código de 6 números de la tienda.
+- La tienda puede **enviar el cobro por WhatsApp** con un enlace `wa.me`, que no necesita la API de WhatsApp Business ni ningún servicio de pago.
 
 ### Rubros: lo que la red ve y lo que no
 
@@ -314,7 +377,7 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 | Un 504 no se trata como fallo | Horizon corta a los ~30 s pero la transacción puede entrar. Se consulta por el hash antes de reintentar; si no, se emitiría dos veces |
 | Los montos son texto, nunca `number` | `0.1 + 0.2` no da `0.3` en JavaScript, y eso en un saldo es dinero mal puesto |
 | Ni "Stellar" ni una clave en las vistas de beneficiario y comercio | Don Julio no debería necesitar entender la red para cobrar. Solo un enlace *ver comprobante* lleva al explorador |
-| Un activo por categoría, sin Soroban | Cabe en la semana y es verificable con transacciones clásicas |
+| Un solo activo, `ALIM`, sin Soroban | Cabe en la semana y es verificable con transacciones clásicas |
 
 ---
 
@@ -324,15 +387,15 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 |---|---|
 | El clawback **destruye** el saldo; no lo devuelve al emisor | El emisor recupera su respaldo en soles, que deja de estar comprometido |
 | El vencimiento no lo dispara la red | Lo ejecuta el emisor con un botón. Vercel Cron admite una ejecución diaria en el plan gratuito, suficiente para vencimientos por día |
-| Stellar controla quién tiene el activo, no en qué se gasta | Un activo por categoría. Un contrato Soroban que valide rubro y vigencia es el siguiente paso |
+| Stellar controla quién tiene el activo, no en qué se gasta | El comercio declara el rubro en el memo y la aplicación lo compara con el programa. Un contrato Soroban que valide rubro y vigencia es el siguiente paso |
 | Verificación simulada | SEP-12 |
 | Un beneficiario podría transferir a otro tenedor autorizado | Requiere Soroban o un esquema donde solo los comercios reciban |
 | El emisor paga directo, sin cuenta distribuidora | En producción conviene separar ambos roles |
 | Las reservas se recuperan cerrando la trustline y fusionando la cuenta | Revocar el patrocinio no sirve: traspasa la reserva al beneficiario, que no tiene XLM, y falla con `op_low_reserve`. Comprobado |
+| Un solo programa vigente por empresa | Todos los vales son `ALIM` y los saldos de dos programas se mezclarían. La salida es un activo por programa |
+| La empresa entra solo con contraseña | Segundo factor y doble aprobación de las entregas, fuera del alcance del MVP |
 
 ---
-| La red no ve qué se compra | El comercio declara el rubro en el memo y la aplicación lo compara con el programa. Un contrato Soroban lo haría cumplir en la cadena |
-| Un solo programa vigente por empresa | Todos los vales son `ALIM` y los saldos de dos programas se mezclarían. La salida es un activo por programa |
 
 ## 9. Estado
 
@@ -341,8 +404,8 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 - `lib/riel/`: las operaciones completas, con el hash calculado antes de enviar, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
-- `api/`: las seis funciones, probadas de punta a punta contra la base y la red, incluidos los intentos de falsificar invitaciones y perfiles.
-- `src/`: las tres vistas, probadas en un navegador real con varios dispositivos a la vez: invitación, registro, aprobación, pago con la cámara, aviso en vivo al comercio, rechazo de la red, control de rubros y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
+- `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con PIN y con tarjeta, tope diario, baja y vencimiento.
+- `src/`: portada, demostración, tres pantallas y las tres vistas, probadas en un navegador real con dispositivos separados: aprobación, entrega, pago con QR, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, foto del QR, enlace pegado, WhatsApp, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 
@@ -359,7 +422,7 @@ npm install
 npm run ciclo
 ```
 
-Para levantar la interfaz en local, contra la API desplegada:
+Para levantar la interfaz y la API en local, contra la base de datos y la red de pruebas:
 
 ```bash
 npm run dev

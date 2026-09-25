@@ -108,9 +108,9 @@ Las administradoras existentes prueban que el mercado existe y paga. Nuestro dif
 | Pieza | Tecnología | Responsabilidad |
 |---|---|---|
 | Frontend | Vue 3 + Vite | Vistas de emisor, beneficiario y comercio |
-| API | Funciones serverless de Vercel (Node) | Firmar y enviar transacciones; registro y verificación |
+| API | Funciones serverless de Vercel (Node) | Firmar y enviar transacciones; registro, acceso y verificación |
 | Riel | SDK de JavaScript de Stellar | Emisión, autorización, pago, congelado, anulación |
-| Datos | Neon (PostgreSQL) | Programas, comercios, beneficiarios, estado de verificación y eventos. **Nunca saldos** |
+| Datos | Neon (PostgreSQL) | Programas, comercios, beneficiarios, accesos (PIN cifrado con scrypt), tarjetas y eventos. **Nunca saldos ni claves de cuentas** |
 | Red | Stellar Testnet vía Horizon | Fuente de verdad de saldos y autorizaciones |
 
 **Decisión del MVP:** el backend custodia las claves de las cuentas de demo y firma por ellas. Lo verificable no es la custodia, sino que las reglas son públicas y las hace cumplir la red. En producción, cada usuario tendría su propia billetera.
@@ -123,7 +123,12 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **Script del ciclo completo** (`npm run ciclo`): reproduce las evidencias con cuentas nuevas y comprueba el estado final contra Horizon.
 - **API** en funciones serverless de Vercel, con base de datos en Neon que nunca guarda saldos ni claves.
 - **Aplicación web** con tres perfiles: empresa, trabajador y comercio.
-- **Acceso sin contraseñas**: la empresa invita por enlace o QR, y cada persona entra desde su celular.
+- **Demostración en un clic**: crea una empresa de prueba con dos trabajadores y tres tiendas, en una sola transacción, y muestra el celular y el PIN de cada uno.
+- **Tres pantallas lado a lado**: empresa, tienda y trabajador, cada una con su propia sesión, en una sola computadora.
+- **Acceso según el riesgo**: la empresa entra con correo y contraseña; trabajador y tienda, con su celular y un PIN de 4 números. PIN cifrado con scrypt, bloqueo de 15 minutos tras 5 intentos fallidos y cierre de sesión en todos los dispositivos. La empresa invita por enlace o QR.
+- **Sin smartphone**: tarjeta imprimible con QR. La tienda la escanea y el trabajador marca su PIN en el equipo de la tienda, con un tope de S/ 100 al día. La empresa la puede anular.
+- **Alternativas al QR**: subir una foto del código, pegar el enlace, escribir el código de 6 números o recibir el cobro por WhatsApp (enlace `wa.me`, sin servicios de pago).
+- **Gestión**: dar de baja a un trabajador (congela y anula su saldo en una transacción) y restablecer su PIN con un enlace de un solo uso, sin SMS.
 - **Cobro con QR pensado para quien no se maneja bien con el celular**: la bodega pone el monto, el trabajador escanea desde la app, como en Yape, y solo confirma. El cobro va firmado por el servidor, caduca a los 10 minutos y no se puede pagar dos veces. También hay un QR fijo imprimible como cartel, y un código de 6 números para cuando la cámara falla.
 - **Aviso en vivo** a la bodega cuando le pagan, en pantalla y en voz alta ("Recibiste 18 soles con 50 céntimos").
 - **Entregas sin duplicados**: dos clics en "Entregar" no emiten dos veces el vale.
@@ -182,17 +187,27 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ### En línea, sin instalar nada
 
-Abre <https://stellar-rail.vercel.app>. Entras como **la empresa de un espacio nuevo**, sin contraseña: cada visitante tiene el suyo, así que nadie pisa la demostración de otro.
+Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. No hace falta celular ni ninguna credencial guardada en otro lado: se crea una empresa de prueba solo para ti y te muestra el acceso de cada persona.
 
-1. En **Empresa**, comparte las dos invitaciones: una para trabajadores y otra para comercios. Ábrelas en otros celulares, o en ventanas privadas del navegador.
-2. Regístrate como comercio con un celular y como trabajador con otro.
-3. Vuelve a **Empresa** y aprueba a los dos: cada aprobación es una transacción en la red, con su comprobante. Deja un segundo comercio sin aprobar.
-4. Crea el programa y entrega los vales.
-5. En el celular de la tienda, escribe un monto y toca **Mostrar QR para cobrar**. En el del trabajador, toca **Pagar con QR**, apunta y confirma. La tienda recibe el aviso sin recargar.
-6. Intenta pagar en el comercio que no aprobaste: **lo rechaza la red**.
-7. Vence el programa: el saldo se congela y se anula.
+| Persona | Qué representa |
+|---|---|
+| María | Trabajadora con smartphone: paga escaneando el QR de la tienda |
+| Rosa | Trabajadora sin smartphone: paga con una tarjeta impresa y su PIN |
+| Bodega Don Julio | Tienda para afiliar |
+| Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
+| Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
 
-Desde la pestaña Empresa también puedes ver las pantallas de trabajador y comercio, para recorrer todo con un solo dispositivo.
+Toca **Abrir las tres pantallas lado a lado**: la empresa, la tienda y el trabajador, cada uno con su sesión. Como una computadora no puede apuntar su cámara a su propia pantalla, el QR de la tienda se «escanea» con un clic desde la pantalla del trabajador.
+
+1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar. Cada aprobación es una transacción en la red, con su comprobante.
+2. **Empresa:** crea el programa y entrega el vale.
+3. **Tienda:** escribe un monto y toca **Mostrar QR para cobrar**. **Trabajador:** toca **Pagar con QR** y confirma. La tienda recibe el aviso sin recargar.
+4. **María** paga en La Esquina con su código: **lo rechaza la red** (`op_not_authorized`).
+5. **María** intenta pagar en Electro Hogar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
+6. **Rosa:** elige a Rosa en la columna del trabajador, toca **Pasar la tarjeta por la tienda** y cobra en la tienda con **Con tarjeta**; Rosa marca su PIN en el teclado de la tienda.
+7. **Empresa:** vence el programa: el saldo se congela y se anula.
+
+También puedes entrar como cada persona, con su celular y su PIN, desde la portada: es el acceso de la vida real. Una empresa de verdad se registra con **Soy empresa → Regístrala** e invita a sus trabajadores y tiendas por enlace o QR.
 
 ### El ciclo completo desde la terminal
 
@@ -241,6 +256,8 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 - **La red no ve qué se compra.** Stellar controla quién puede tener el vale y dónde se gasta, no el producto: la canasta solo la ve el comercio. Por eso el comercio **declara el rubro** en cada cobro y esa declaración viaja en el memo de la transacción, que es pública. Si declara en falso, la prueba queda registrada, y la sanción, desafiliarlo, sí la hace cumplir la red. Que un programa acepte o no un rubro **lo comprueba la aplicación** en este MVP; hacerlo cumplir en la cadena requiere un contrato Soroban.
 - **Un programa vigente por empresa a la vez.** Todos los vales son el mismo activo, `ALIM`, así que los saldos de dos programas se mezclarían en la misma cuenta. Separarlos exige un activo por programa.
 - **Verificación simulada.** No se procesan datos reales de identidad.
+- **El PIN protege el acceso, no la cuenta en la red.** Las cuentas las custodia el sistema (decisión del MVP); nadie ve su clave. Sin SMS ni correos de verificación: en sus versiones gratuitas solo llegan al desarrollador, así que el PIN nuevo se entrega con un enlace de un solo uso que la empresa comparte por WhatsApp o con un QR.
+- **Las demostraciones son públicas.** Cualquiera puede crear una; hay un tope de 30 por hora porque cada una gasta XLM de prueba del emisor.
 - **Sin cuenta distribuidora.** El emisor paga directo; en producción conviene separar ambos roles.
 - **Un beneficiario autorizado podría transferir vales a otro tenedor autorizado.** Cerrarlo requiere Soroban o un esquema donde solo los comercios reciban.
 - **Reservas de cuentas.** Cada trustline exige una reserva en XLM; a escala se resuelve con reservas patrocinadas.
@@ -248,15 +265,18 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 ## Fuera de alcance
 
 - Registro ante el Ministerio de Trabajo.
-- Conversión y liquidación real a soles.
+- Conversión y liquidación real a soles, y retiro a soles: la Ley 28051 no permite cambiar el vale por efectivo.
+- Devoluciones de una compra.
 - Integración con planilla.
 - KYC real con documentos.
+- Segundo factor para la empresa, doble aprobación de las entregas y separar la administradora de la empresa cliente.
 
 ## Próximos pasos
 
 1. **Un activo por programa**: cada empresa afilia a sus propios comercios en la cadena y los saldos de distintos programas dejan de mezclarse.
 2. **Contrato Soroban** que haga cumplir en la red los rubros y la vigencia.
 3. KYC con SEP-12.
+4. Segundo factor y doble aprobación para la empresa.
 5. Cobertura sin datos móviles: SMS o USSD.
 6. Piloto con una empresa y bodegas de un distrito.
 7. Postulación a Instawards y Stellar Community Fund.
