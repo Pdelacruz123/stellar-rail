@@ -1,14 +1,20 @@
 <script setup>
 /**
- * La portada, para quien todavia no entro: el sitio del producto y el
- * acceso.
+ * La portada, para quien todavia no entro.
+ *
+ * Llegan tres tipos de personas, y cada una necesita una sola cosa:
+ *  - trabajadores y bodegas que ya tienen cuenta: entrar, rapido;
+ *  - una empresa que evalua el producto: entender que hace y crear su cuenta;
+ *  - quien quiere verlo funcionar: la demostracion.
+ *
+ * Por eso es corta: que es, las dos acciones, como funciona y que garantiza
+ * la red. Sin cifras inventadas: la imagen es el vale, el objeto real.
  *
  * El acceso depende del riesgo de cada uno:
  *  - la empresa, con correo y contrasena: maneja el dinero de todos;
- *  - trabajador y tienda, con su celular y un PIN de 4 numeros, que es lo
- *    que alguien que no se maneja con la tecnologia puede recordar.
+ *  - trabajador y tienda, con su celular y un PIN de 4 numeros.
  */
-import { computed, nextTick, ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { api } from '../api.js';
 import { ponerPerfil } from '../estado.js';
 import { crearDemo, leerDemo } from '../demo.js';
@@ -28,12 +34,6 @@ const trabajando = ref('');
 const aviso = ref('');
 const primerCampo = ref(null);
 const hayDemo = Boolean(leerDemo());
-
-// Calculadora del programa: solo multiplica, no guarda nada.
-const personas = ref(40);
-const montoMes = ref(300);
-const miles = (n) => new Intl.NumberFormat('es-PE').format(n).replace(/,/g, ' ');
-const totalMes = computed(() => miles(personas.value * montoMes.value));
 
 async function ir(cual, conPerfil) {
   pantalla.value = cual;
@@ -106,224 +106,116 @@ const PERFILES = [
 </script>
 
 <template>
-  <!-- ================= SITIO ================= -->
-  <div v-if="pantalla === 'inicio'" class="sitio">
-    <header class="heroe">
-      <div class="caja">
-        <div class="cab">
-          <button class="sin-estilo" aria-label="StellarRail, inicio" @click="ir('inicio')"><Marca /></button>
-          <button class="btn-contorno" @click="ir('entrar')">Entrar</button>
-          <button class="btn-oro ocultar-movil" @click="ir('nueva')">Crear cuenta</button>
-        </div>
-
-        <div class="heroe-dentro">
-          <div>
-            <div class="pastilla"><b>Nuevo</b>Cobro por QR en bodegas afiliadas</div>
-            <h1>El vale de alimentos que se cobra en la bodega <span>del barrio.</span></h1>
-            <p class="lead">
-              La empresa entrega el vale, el trabajador paga desde su celular o
-              con una tarjeta impresa, y la bodega recibe el pago en segundos.
-            </p>
-            <div class="heroe-acciones">
-              <button class="btn-oro" :disabled="Boolean(trabajando)" @click="probarDemo">
-                {{ trabajando === 'demo' ? 'Preparando la demostración…' : 'Probar la demostración' }}
-                <Icono v-if="trabajando !== 'demo'" nombre="flecha" :tamano="20" />
-              </button>
-              <button class="btn-contorno" @click="ir('nueva')">
-                <Icono nombre="empresa" :tamano="20" /> Crear cuenta de empresa
-              </button>
-            </div>
-            <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-            <p class="heroe-nota">
-              <Icono nombre="escudo" :tamano="18" /> Si la tienda no está afiliada, la red rechaza el pago.
-            </p>
-            <p v-if="hayDemo" class="heroe-nota">
-              <button class="enlace-texto enlace-claro" @click="volverADemo">Volver a mi demostración</button>
-            </p>
-          </div>
-
-          <div class="escena" aria-hidden="true">
-            <div class="tablero">
-              <div class="barra"><i /><i /><i /></div>
-              <div class="cuerpo">
-                <div class="lat"><span class="act" /><span /><span /><span /><span /></div>
-                <div class="cont">
-                  <div class="t">Vale de alimentos · octubre</div>
-                  <div class="kp">
-                    <div class="oro"><small>Gastado</small><b>S/ 7 842</b></div>
-                    <div><small>Compras hoy</small><b>63</b></div>
-                    <div><small>Bodegas</small><b>12</b></div>
-                  </div>
-                  <div class="graf">
-                    <i style="height:38%" /><i style="height:52%" /><i style="height:44%" /><i style="height:70%" />
-                    <i style="height:58%" /><i style="height:81%" /><i style="height:64%" /><i class="hoy" style="height:92%" />
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="fono">
-              <div class="pant">
-                <div class="hola">Hola, María<small>Textiles Andinos</small></div>
-                <div class="vale">
-                  <span>Vale de alimentos</span>
-                  <b>S/ 184.50</b>
-                  <span>Úsalo hasta el 31/10</span>
-                </div>
-                <div class="pagar"><Icono nombre="qr" :tamano="20" /> Pagar con QR</div>
-                <div class="sec"><Icono nombre="teclado" :tamano="20" /> Escribir el código</div>
-                <div class="mov">
-                  <div><span>Bodega Don Julio<small>Hoy, 12:41</small></span><b>S/ 12.00</b></div>
-                  <div><span>Panadería Santa Rosa<small>Hoy, 12:15</small></span><b>S/ 5.40</b></div>
-                </div>
-              </div>
-            </div>
-            <div class="aviso-pago">
-              <span class="ic"><Icono nombre="check" :tamano="20" /></span>
-              <div><small>Bodega Don Julio</small><b>Te pagaron</b></div>
-              <span class="m">S/ 12.00</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="construido">
-          Construido sobre <b>Stellar</b> · funciona en su red de pruebas, sin dinero real.
-        </div>
+  <div class="sitio">
+    <header class="sitio-barra">
+      <div class="caja sitio-barra-dentro">
+        <button class="sin-estilo" aria-label="StellarRail, inicio" @click="ir('inicio')"><Marca /></button>
+        <button v-if="pantalla === 'inicio'" class="suave" @click="ir('entrar')">Entrar</button>
+        <button v-else class="suave" @click="ir('inicio')"><Icono nombre="atras" :tamano="18" /> Inicio</button>
       </div>
     </header>
 
-    <section class="seccion">
-      <div class="caja">
-        <div class="cab-sec">
-          <h2>Una red, tres pantallas.</h2>
-          <p class="lead">
-            Cada persona ve solo lo que necesita: RR. HH. gestiona desde la
-            computadora, el trabajador paga con un botón y la bodega cobra de pie en la caja.
+    <!-- ================= INICIO ================= -->
+    <main v-if="pantalla === 'inicio'">
+      <section class="caja heroe">
+        <div class="heroe-texto">
+          <h1>Vales de alimentos que se pagan con QR en la bodega.</h1>
+          <p class="heroe-bajada">
+            La empresa entrega el vale, el trabajador paga desde su celular o
+            con una tarjeta, y la bodega cobra al instante, sin POS y sin comisión.
+          </p>
+          <div class="heroe-acciones">
+            <button class="destacado" :disabled="Boolean(trabajando)" @click="probarDemo">
+              {{ trabajando === 'demo' ? 'Preparando la demostración…' : 'Probar la demostración' }}
+            </button>
+            <button class="suave grande" @click="ir('nueva')">Crear cuenta de empresa</button>
+          </div>
+          <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
+          <p class="apagado pequeno">
+            La demostración crea una empresa de ejemplo con sus trabajadores y
+            bodegas. Funciona en la red de pruebas de Stellar: no se usa dinero real.
+            <button v-if="hayDemo" class="enlace-texto" @click="volverADemo">Volver a mi demostración</button>
           </p>
         </div>
-        <div class="perfiles">
-          <article class="perfil empresa">
-            <span class="quien"><Icono nombre="empresa" :tamano="16" /> Empresa</span>
-            <h3>Controla el gasto en vivo</h3>
-            <p>Crea el programa, entrega el vale a todo el equipo y ve cada compra en el momento en que ocurre.</p>
-            <div class="vista">
-              <div class="mini-fila"><span>Gastado</span><b>S/ 7 842</b></div>
-              <div class="barra-p"><i /></div>
-              <div class="mini-fila" style="margin-top:8px"><span>Personas activas</span><b>34 de 40</b></div>
-              <div class="mini-fila"><span>Vence</span><b>31 oct.</b></div>
-            </div>
+
+        <!-- La imagen es el producto: el vale del trabajador y el aviso que recibe la bodega. -->
+        <div class="heroe-visual" aria-hidden="true">
+          <div class="vale">
+            <img class="vale-logo" src="/logo.svg" alt="">
+            <span>Vale de alimentos</span>
+            <b>S/ 150.00</b>
+            <span>Úsalo hasta el 31/10</span>
+          </div>
+          <div class="aviso-ejemplo">
+            <span class="aviso-ejemplo-icono"><Icono nombre="check" :tamano="20" /></span>
+            <span><small>Bodega Don Julio</small><b>Te pagaron S/ 12.50</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="caja bloque-sitio">
+        <h2 class="titulo-sitio">Cómo funciona</h2>
+        <div class="tres-col">
+          <article class="paso">
+            <span class="paso-icono"><Icono nombre="empresa" /></span>
+            <h3>La empresa entrega el vale</h3>
+            <p>Aprueba a su equipo y a las bodegas del barrio, y entrega el vale a todos en una sola operación.</p>
           </article>
-          <article class="perfil trabajador">
-            <span class="quien"><Icono nombre="celular" :tamano="16" /> Trabajador</span>
-            <h3>Paga con un botón</h3>
-            <p>Escanea el QR de la bodega o entrega su tarjeta impresa y marca su PIN. Sin instalar nada.</p>
-            <div class="vista">
-              <div style="font-size:13px;color:#A7A9B0">Tu vale de alimentos</div>
-              <div style="font-size:30px;font-weight:700;letter-spacing:-.04em">S/ 184.50</div>
-              <div style="margin-top:12px;height:44px;border-radius:10px;background:#FDDA24;color:#0F0F0F;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700">
-                <Icono nombre="qr" :tamano="20" /> Pagar con QR
-              </div>
-            </div>
+          <article class="paso">
+            <span class="paso-icono"><Icono nombre="qr" /></span>
+            <h3>El trabajador paga</h3>
+            <p>Escanea el QR de la bodega desde su celular. Si no tiene smartphone, usa su tarjeta y su PIN.</p>
           </article>
-          <article class="perfil bodega">
-            <span class="quien"><Icono nombre="tienda" :tamano="16" /> Bodega</span>
-            <h3>Cobra desde el celular</h3>
-            <p>Muestra su QR y el celular avisa en voz alta cuando entra el pago. Sin POS y sin comisión.</p>
-            <div class="vista" style="display:flex;gap:14px;align-items:center">
-              <Icono nombre="qr" :tamano="56" />
-              <div>
-                <div style="font-size:13px;color:#555861">Muestra este código</div>
-                <div style="font-weight:700;font-size:18px;letter-spacing:-.02em">Bodega Don Julio</div>
-              </div>
-            </div>
+          <article class="paso">
+            <span class="paso-icono"><Icono nombre="tienda" /></span>
+            <h3>La bodega cobra</h3>
+            <p>Recibe el pago en segundos y el celular se lo dice en voz alta. Sin POS y sin comisión.</p>
           </article>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="franja-oro">
-      <div class="caja franja-oro-dentro">
-        <div>
-          <h2>El vale se gasta solo donde debe.</h2>
-          <p class="lead">
-            Solo funciona en las bodegas que la empresa afilia, y en lo que cubre
-            el programa. Lo que no se usa al vencer se anula: deja de existir.
+      <section class="caja bloque-sitio">
+        <h2 class="titulo-sitio">Reglas que hace cumplir la red</h2>
+        <div class="tres-col">
+          <div class="garantia">
+            <Icono nombre="escudo" />
+            <div>
+              <b>Solo en bodegas afiliadas</b>
+              <p>Un pago a una tienda que la empresa no afilió lo rechaza la red de pagos, no nuestra aplicación.</p>
+            </div>
+          </div>
+          <div class="garantia">
+            <Icono nombre="reloj" />
+            <div>
+              <b>Con fecha de vencimiento</b>
+              <p>Al vencer el programa, la empresa congela el vale y anula el saldo que no se usó.</p>
+            </div>
+          </div>
+          <div class="garantia">
+            <Icono nombre="historial" />
+            <div>
+              <b>Cada pago con comprobante</b>
+              <p>Todas las operaciones quedan en el registro público de Stellar y se pueden verificar.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="pie-sitio">
+        <div class="caja">
+          <Marca :tamano="24" />
+          <p>
+            “Stellar” es una marca de la Stellar Development Foundation. StellarRail es un
+            proyecto independiente, no afiliado ni respaldado por la Stellar Development
+            Foundation. Funciona en la red de pruebas; la verificación de identidad es simulada.
+            <a href="https://github.com/Pdelacruz123/stellar-rail" target="_blank" rel="noopener">Código fuente</a>
           </p>
-          <div class="hechos">
-            <div><b>1 = S/ 1</b><span>Cada unidad del vale vale un sol.</span></div>
-            <div><b>~5 s</b><span>Lo que tarda en confirmarse un pago.</span></div>
-            <div><b>10 min</b><span>Vigencia de cada cobro por QR.</span></div>
-          </div>
         </div>
-        <div class="calc">
-          <h3>Calcula tu programa</h3>
-          <label for="c-personas">Trabajadores</label>
-          <div class="campo-rango">
-            <input id="c-personas" v-model.number="personas" type="range" min="5" max="500" step="5">
-            <output for="c-personas">{{ personas }}</output>
-          </div>
-          <label for="c-monto">Monto mensual por persona</label>
-          <div class="campo-rango">
-            <input id="c-monto" v-model.number="montoMes" type="range" min="50" max="800" step="10">
-            <output for="c-monto">S/ {{ montoMes }}</output>
-          </div>
-          <div class="total"><small>Total a entregar al mes</small><b>S/ {{ totalMes }}</b></div>
-          <button class="btn-oro" @click="ir('nueva')">Crear cuenta de empresa</button>
-        </div>
-      </div>
-    </section>
+      </footer>
+    </main>
 
-    <section class="seccion seccion-negra">
-      <div class="caja">
-        <div class="cab-sec">
-          <h2>Reglas que no dependen de nosotros.</h2>
-          <p class="lead">Cada pago pasa por la red Stellar, que aplica las reglas y deja un comprobante público.</p>
-        </div>
-        <div class="garantias-lista">
-          <div>
-            <b>Solo en bodegas afiliadas</b>
-            <p>Un pago a una tienda que la empresa no afilió lo rechaza la red de pagos, no nuestra aplicación.</p>
-          </div>
-          <div>
-            <b>Con fecha de vencimiento</b>
-            <p>Al vencer el programa, la empresa congela el vale y anula el saldo que no se usó.</p>
-          </div>
-          <div>
-            <b>Cada pago con comprobante</b>
-            <p>Todas las operaciones quedan en el registro público de Stellar y se pueden verificar.</p>
-          </div>
-        </div>
-        <div class="heroe-acciones" style="margin-top:36px">
-          <button class="btn-oro" :disabled="Boolean(trabajando)" @click="probarDemo">
-            {{ trabajando === 'demo' ? 'Preparando la demostración…' : 'Míralo funcionar en vivo' }}
-            <Icono v-if="trabajando !== 'demo'" nombre="flecha" :tamano="20" />
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <footer class="pie-sitio">
-      <div class="caja">
-        <Marca :tamano="26" />
-        <p>
-          “Stellar” es una marca de la Stellar Development Foundation. StellarRail es un
-          proyecto independiente, no afiliado, patrocinado ni respaldado por la Stellar
-          Development Foundation. Funciona en la red de pruebas; la verificación de
-          identidad es simulada.
-          <a href="https://github.com/Pdelacruz123/stellar-rail" target="_blank" rel="noopener">Código fuente</a>
-        </p>
-      </div>
-    </footer>
-  </div>
-
-  <!-- ================= ENTRAR Y CREAR CUENTA ================= -->
-  <div v-else class="acceso-fondo">
-    <div class="caja">
-      <div class="cab">
-        <button class="sin-estilo" aria-label="StellarRail, volver al inicio" @click="ir('inicio')"><Marca /></button>
-      </div>
-    </div>
-
-    <main v-if="pantalla === 'entrar'" class="acceso">
+    <!-- ================= ENTRAR ================= -->
+    <main v-else-if="pantalla === 'entrar'" class="acceso">
       <section class="tarjeta acceso-caja" :class="{ sencillo: perfil !== 'empresa' }">
         <h1 class="acceso-titulo">Entrar</h1>
         <p v-if="vieneDePagar" class="aviso espera">Entra con tu celular y tu PIN para pagar.</p>
@@ -371,6 +263,7 @@ const PERFILES = [
       </section>
     </main>
 
+    <!-- ================= EMPRESA NUEVA ================= -->
     <main v-else class="acceso">
       <section class="tarjeta acceso-caja">
         <h1 class="acceso-titulo">Crear cuenta de empresa</h1>
