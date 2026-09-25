@@ -247,34 +247,9 @@ const porEntregar = computed(() => (programa.value
 
 <template>
   <section class="tarjeta">
-    <h2>Invitar</h2>
-    <p class="apagado pequeno">
-      Nadie necesita instalar nada. Comparte el enlace por WhatsApp o muestra
-      el código: cada persona se registra con su celular y un PIN de 4 números,
-      y con eso entra después.
-    </p>
-    <div class="invitaciones">
-      <article v-for="inv in invitaciones" :key="inv.rol" class="invitacion">
-        <h3>{{ inv.titulo }}</h3>
-        <p class="apagado pequeno">{{ inv.detalle }}</p>
-        <!-- Se lee desde una pantalla: basta la correccion media, que da un codigo menos denso. -->
-        <Qr :texto="inv.enlace" nivel="M" :alt="`Código QR para ${inv.titulo.toLowerCase()}`" :tamano="190" />
-        <div class="acciones" style="margin-top:10px">
-          <a class="boton si" :href="inv.whatsapp" target="_blank" rel="noopener">Enviar por WhatsApp</a>
-          <button v-if="puedeCompartir" class="suave" @click="compartir(inv)">Compartir</button>
-          <button class="suave" @click="copiar(inv)">
-            {{ copiado === inv.rol ? 'Copiado' : 'Copiar enlace' }}
-          </button>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <section class="tarjeta">
     <h2>Verificaciones</h2>
     <p class="apagado pequeno">
-      Aprobar no es marcar una casilla: ejecuta una transacción que autoriza
-      la cuenta en la red. Sin ella, el protocolo no le deja tener el vale.
+      Al aprobar, la cuenta queda autorizada en la red de pagos y puede recibir el vale.
     </p>
 
     <p v-if="!pendientes.length" class="apagado">No hay nada pendiente.</p>
@@ -295,6 +270,109 @@ const porEntregar = computed(() => (programa.value
     </div>
 
     <Prueba v-if="ultima" :tx="ultima" />
+  </section>
+
+  <section class="tarjeta">
+    <h2>Programa</h2>
+
+    <form v-if="!vigente" @submit.prevent="crear">
+      <p v-if="programa" class="apagado pequeno">
+        El programa anterior venció. Puedes crear uno nuevo.
+      </p>
+      <fieldset class="campo">
+        <legend>Tipo de programa</legend>
+        <label v-for="(t, clave) in TIPOS" :key="clave" class="opcion">
+          <input v-model="nuevo.tipo" type="radio" name="tipo" :value="clave"> {{ t.nombre }}
+        </label>
+      </fieldset>
+
+      <fieldset class="campo">
+        <legend>Dónde se puede gastar</legend>
+        <p v-if="rubrosFijos" class="apagado pequeno" style="margin:0 0 6px">
+          La Ley 28051 exige que la prestación alimentaria se use solo en
+          alimentos: estos rubros no los elige la empresa.
+        </p>
+        <label v-for="(nombre, clave) in RUBROS" :key="clave" class="opcion">
+          <input v-model="nuevo.rubros" type="checkbox" :value="clave" :disabled="rubrosFijos">
+          {{ nombre }}
+        </label>
+      </fieldset>
+
+      <div class="campo">
+        <label for="pn">Nombre</label>
+        <input id="pn" v-model="nuevo.nombre" required>
+      </div>
+      <div class="pareja">
+        <div class="campo">
+          <label for="pm">Monto por trabajador (S/)</label>
+          <input id="pm" v-model="nuevo.monto" type="text" inputmode="decimal" autocomplete="off" required>
+        </div>
+        <div class="campo">
+          <label for="pv">Vence el</label>
+          <input id="pv" v-model="nuevo.venceEl" type="date" required>
+        </div>
+      </div>
+      <button :disabled="trabajando === 'crear' || !nuevo.rubros.length">Crear programa</button>
+    </form>
+
+    <template v-if="programa">
+      <div class="fila">
+        <div>
+          <div class="nombre">{{ programa.nombre }}</div>
+          <div class="apagado pequeno">
+            {{ TIPOS[programa.tipo]?.nombre ?? programa.tipo }} ·
+            {{ soles(programa.monto) }} por trabajador ·
+            vence el {{ fecha(programa.vence_el) }}
+          </div>
+          <div class="apagado pequeno">
+            Rubros: {{ (programa.rubros ?? []).map((r) => RUBROS[r] ?? r).join(', ') }}
+          </div>
+        </div>
+        <span :class="['etiqueta', programa.estado === 'vigente' ? 'ok' : 'no']">
+          {{ programa.estado === 'vigente' ? 'Vigente' : 'Vencido' }}
+        </span>
+      </div>
+
+      <div v-if="programa.estado === 'vigente'" class="acciones" style="margin-top:12px">
+        <button :disabled="trabajando === 'entregar' || !porEntregar"
+                @click="ejecutar('entregar', () => api.entregar(programa.id))">
+          {{ trabajando === 'entregar' ? 'Entregando…'
+            : porEntregar ? `Entregar vale a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
+              : 'Todos recibieron su vale' }}
+        </button>
+        <button class="suave" :disabled="trabajando === 'vencer'"
+                @click="ejecutar('vencer', () => api.vencer(programa.id))">
+          {{ trabajando === 'vencer' ? 'Venciendo…' : 'Vencer programa' }}
+        </button>
+      </div>
+
+      <p v-if="programa.estado === 'vencido'" class="aviso ok">
+        El saldo no usado se anuló en la red: deja de existir, y el respaldo
+        en soles de la empresa deja de estar comprometido.
+      </p>
+    </template>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Gasto en vivo</h2>
+    <p class="apagado pequeno">Saldos leídos en vivo desde la red Stellar.</p>
+    <div class="cifras">
+      <div class="cifra"><b>{{ soles(entregado) }}</b><span>Entregado</span></div>
+      <div class="cifra"><b>{{ soles(gastado) }}</b><span>Gastado en tiendas</span></div>
+      <div class="cifra"><b>{{ soles(saldoVigente) }}</b><span>Saldo vigente</span></div>
+      <div v-if="programa?.estado === 'vencido'" class="cifra">
+        <b>{{ soles(anulado) }}</b><span>Anulado al vencer</span>
+      </div>
+    </div>
+    <p v-if="errorGasto" class="aviso espera">{{ errorGasto }}</p>
+    <div v-for="g in gasto" :key="g.nombre" class="fila" style="margin-top:8px">
+      <span>{{ g.nombre }}</span>
+      <span>
+        {{ soles(g.saldo) }}
+        <span v-if="g.congelado" class="etiqueta no">Congelado</span>
+      </span>
+    </div>
+    <p v-if="!gasto.length" class="apagado pequeno">Todavía no hay trabajadores verificados.</p>
   </section>
 
   <section class="tarjeta">
@@ -377,109 +455,27 @@ const porEntregar = computed(() => (programa.value
   </section>
 
   <section class="tarjeta">
-    <h2>Programa</h2>
-
-    <form v-if="!vigente" @submit.prevent="crear">
-      <p v-if="programa" class="apagado pequeno">
-        El programa anterior venció. Puedes crear uno nuevo.
-      </p>
-      <fieldset class="campo">
-        <legend>Tipo de programa</legend>
-        <label v-for="(t, clave) in TIPOS" :key="clave" class="opcion">
-          <input v-model="nuevo.tipo" type="radio" name="tipo" :value="clave"> {{ t.nombre }}
-        </label>
-      </fieldset>
-
-      <fieldset class="campo">
-        <legend>Dónde se puede gastar</legend>
-        <p v-if="rubrosFijos" class="apagado pequeno" style="margin:0 0 6px">
-          La Ley 28051 exige que la prestación alimentaria se use solo en
-          alimentos: estos rubros no los elige la empresa.
-        </p>
-        <label v-for="(nombre, clave) in RUBROS" :key="clave" class="opcion">
-          <input v-model="nuevo.rubros" type="checkbox" :value="clave" :disabled="rubrosFijos">
-          {{ nombre }}
-        </label>
-      </fieldset>
-
-      <div class="campo">
-        <label for="pn">Nombre</label>
-        <input id="pn" v-model="nuevo.nombre" required>
-      </div>
-      <div class="pareja">
-        <div class="campo">
-          <label for="pm">Monto por trabajador (S/)</label>
-          <input id="pm" v-model="nuevo.monto" type="text" inputmode="decimal" autocomplete="off" required>
-        </div>
-        <div class="campo">
-          <label for="pv">Vence el</label>
-          <input id="pv" v-model="nuevo.venceEl" type="date" required>
-        </div>
-      </div>
-      <button :disabled="trabajando === 'crear' || !nuevo.rubros.length">Crear programa</button>
-    </form>
-
-    <template v-if="programa">
-      <div class="fila">
-        <div>
-          <div class="nombre">{{ programa.nombre }}</div>
-          <div class="apagado pequeno">
-            {{ TIPOS[programa.tipo]?.nombre ?? programa.tipo }} ·
-            {{ soles(programa.monto) }} por trabajador ·
-            vence el {{ fecha(programa.vence_el) }}
-          </div>
-          <div class="apagado pequeno">
-            Rubros: {{ (programa.rubros ?? []).map((r) => RUBROS[r] ?? r).join(', ') }}
-          </div>
-        </div>
-        <span :class="['etiqueta', programa.estado === 'vigente' ? 'ok' : 'no']">
-          {{ programa.estado === 'vigente' ? 'Vigente' : 'Vencido' }}
-        </span>
-      </div>
-
-      <div v-if="programa.estado === 'vigente'" class="acciones" style="margin-top:12px">
-        <button :disabled="trabajando === 'entregar' || !porEntregar"
-                @click="ejecutar('entregar', () => api.entregar(programa.id))">
-          {{ trabajando === 'entregar' ? 'Entregando…'
-            : porEntregar ? `Entregar vale a ${porEntregar} ${porEntregar === 1 ? 'trabajador' : 'trabajadores'}`
-              : 'Todos recibieron su vale' }}
-        </button>
-        <button class="suave" :disabled="trabajando === 'vencer'"
-                @click="ejecutar('vencer', () => api.vencer(programa.id))">
-          {{ trabajando === 'vencer' ? 'Venciendo…' : 'Vencer programa' }}
-        </button>
-      </div>
-
-      <p v-if="programa.estado === 'vencido'" class="aviso ok">
-        El saldo no gastado se anuló en la red. El clawback lo destruye: la
-        empresa recupera su respaldo en soles, que deja de estar comprometido.
-      </p>
-    </template>
-  </section>
-
-  <section class="tarjeta">
-    <h2>Gasto en vivo</h2>
+    <h2>Invitar</h2>
     <p class="apagado pequeno">
-      Leído directamente de Horizon, no de nuestra base de datos. Es la misma
-      fuente que puede consultar cualquiera.
+      Nadie necesita instalar nada. Comparte el enlace por WhatsApp o muestra
+      el código: cada persona se registra con su celular y un PIN de 4 números,
+      y con eso entra después.
     </p>
-    <div class="cifras">
-      <div class="cifra"><b>{{ soles(entregado) }}</b><span>Entregado</span></div>
-      <div class="cifra"><b>{{ soles(gastado) }}</b><span>Gastado en tiendas</span></div>
-      <div class="cifra"><b>{{ soles(saldoVigente) }}</b><span>Saldo vigente</span></div>
-      <div v-if="programa?.estado === 'vencido'" class="cifra">
-        <b>{{ soles(anulado) }}</b><span>Anulado al vencer</span>
-      </div>
+    <div class="invitaciones">
+      <article v-for="inv in invitaciones" :key="inv.rol" class="invitacion">
+        <h3>{{ inv.titulo }}</h3>
+        <p class="apagado pequeno">{{ inv.detalle }}</p>
+        <!-- Se lee desde una pantalla: basta la correccion media, que da un codigo menos denso. -->
+        <Qr :texto="inv.enlace" nivel="M" :alt="`Código QR para ${inv.titulo.toLowerCase()}`" :tamano="190" />
+        <div class="acciones" style="margin-top:10px">
+          <a class="boton si" :href="inv.whatsapp" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+          <button v-if="puedeCompartir" class="suave" @click="compartir(inv)">Compartir</button>
+          <button class="suave" @click="copiar(inv)">
+            {{ copiado === inv.rol ? 'Copiado' : 'Copiar enlace' }}
+          </button>
+        </div>
+      </article>
     </div>
-    <p v-if="errorGasto" class="aviso espera">{{ errorGasto }}</p>
-    <div v-for="g in gasto" :key="g.nombre" class="fila" style="margin-top:8px">
-      <span>{{ g.nombre }}</span>
-      <span>
-        {{ soles(g.saldo) }}
-        <span v-if="g.congelado" class="etiqueta no">Congelado</span>
-      </span>
-    </div>
-    <p v-if="!gasto.length" class="apagado pequeno">Todavía no hay trabajadores verificados.</p>
   </section>
 
   <div v-if="hoja?.tipo === 'tarjeta'" class="cartel" aria-hidden="true">

@@ -197,17 +197,17 @@ Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. No ha
 | Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
 | Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
 
-Toca **Abrir las tres pantallas lado a lado**: la empresa, la tienda y el trabajador, cada uno con su sesión. Como una computadora no puede apuntar su cámara a su propia pantalla, el QR de la tienda se «escanea» con un clic desde la pantalla del trabajador.
+Se abre la **vista en vivo**: la empresa, la tienda y el trabajador lado a lado, cada uno con su sesión, y el panel **Cuentas de prueba** con el celular y el PIN de cada persona. Como una computadora no puede apuntar su cámara a su propia pantalla, el visor del trabajador muestra el QR de la tienda de al lado y se escanea con un toque.
 
 1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar. Cada aprobación es una transacción en la red, con su comprobante.
 2. **Empresa:** crea el programa y entrega el vale.
 3. **Tienda:** escribe un monto y toca **Mostrar QR para cobrar**. **Trabajador:** toca **Pagar con QR** y confirma. La tienda recibe el aviso sin recargar.
 4. **María** paga en La Esquina con su código: **lo rechaza la red** (`op_not_authorized`).
 5. **María** intenta pagar en Electro Hogar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
-6. **Rosa:** elige a Rosa en la columna del trabajador, toca **Pasar la tarjeta por la tienda** y cobra en la tienda con **Con tarjeta**; Rosa marca su PIN en el teclado de la tienda.
+6. **Rosa:** elige a Rosa en la columna del trabajador, toca **Acercar la tarjeta a la tienda** y cobra en la tienda con **Con tarjeta**; Rosa marca su PIN en el teclado de la tienda.
 7. **Empresa:** vence el programa: el saldo se congela y se anula.
 
-También puedes entrar como cada persona, con su celular y su PIN, desde la portada: es el acceso de la vida real. Una empresa de verdad se registra con **Soy empresa → Regístrala** e invita a sus trabajadores y tiendas por enlace o QR.
+También puedes entrar como cada persona con su celular y su PIN, desde **Entrar**, en otro navegador o en un celular: es el acceso de la vida real. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
 
 ### El ciclo completo desde la terminal
 
