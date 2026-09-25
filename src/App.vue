@@ -83,6 +83,8 @@ onUnmounted(() => {
 <template>
   <Tres v-if="pagina === 'tres' && !enMarco" />
   <Portada v-else-if="esPortada" />
+  <!-- La empresa trabaja en computadora: panel a pantalla completa, con su barra lateral. -->
+  <Emisor v-else-if="esEmpresa && !conPagina" />
 
   <template v-else>
     <header :class="['app-barra', { 'app-barra-movil': !esEmpresa }]">
@@ -93,7 +95,6 @@ onUnmounted(() => {
             {{ quien }}
             <span v-if="estado.yo.demo" class="insignia">Prueba</span>
           </span>
-          <button v-if="esEmpresa && estado.yo.demo && !enMarco" class="suave chico ocultar-movil" @click="irA('#/tres')">Vista en vivo</button>
           <button v-if="!enMarco" class="suave chico" @click="salir()">Salir</button>
         </div>
       </div>
@@ -124,11 +125,6 @@ onUnmounted(() => {
           <button class="enlace" @click="salir(true)">Cerrar sesión en todos mis dispositivos</button>
         </p>
       </template>
-
-      <p v-if="esEmpresa" class="apagado pequeno pie-app">
-        Cada operación queda en el registro público de Stellar (red de pruebas) y se verifica con su comprobante.
-        La verificación de identidad es simulada.
-      </p>
     </div>
   </template>
 </template>
