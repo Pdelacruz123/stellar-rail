@@ -4,7 +4,6 @@ import { api, saldoEnLaRed } from '../api.js';
 import {
   estado, accion, fecha, montoValido, ponerPerfil, programaVigente, soles,
 } from '../estado.js';
-import { leerDemo } from '../demo.js';
 import Icono from '../Icono.vue';
 import Marca from '../Marca.vue';
 import { RUBROS, TIPOS } from '../../lib/rubros.js';
@@ -318,11 +317,9 @@ const diasParaVencer = computed(() => {
 });
 
 async function salir(todas = false) {
-  // Una cuenta de prueba vuelve a la lista de cuentas: asi se entra con otra.
-  const aCuentas = estado.yo?.demo && leerDemo();
   await (todas ? api.cerrarTodas() : api.salir()).catch(() => {});
   await ponerPerfil(await api.sesion());
-  window.location.hash = aCuentas ? '#/demo' : '#/';
+  window.location.hash = '#/';
 }
 
 /**
