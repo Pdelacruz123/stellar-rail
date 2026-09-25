@@ -13,6 +13,9 @@ defineProps({
   etiqueta: { type: String, default: 'Tu PIN de 4 números' },
   id: { type: String, default: 'pin' },
   teclado: { type: Boolean, default: false },
+  // En el equipo de la tienda la etiqueta va grande: el cliente la lee de
+  // pie, quiza sin lentes. En un formulario, igual que las demas etiquetas.
+  destacado: { type: Boolean, default: false },
 });
 
 const campo = ref(null);
@@ -26,7 +29,7 @@ defineExpose({ enfocar: () => campo.value?.focus() });
 
 <template>
   <div class="pin">
-    <label :for="id" class="pregunta">{{ etiqueta }}</label>
+    <label :for="id" :class="{ pregunta: destacado }">{{ etiqueta }}</label>
     <input
       :id="id" ref="campo" :value="modelo" class="numero-grande" type="password"
       inputmode="numeric" maxlength="4" autocomplete="off" pattern="\d{4}"
