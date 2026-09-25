@@ -80,11 +80,11 @@ export default manejar({
     const [maria, rosa] = alta.beneficiarios;
     const [julio, esquina, electro] = alta.comercios;
     const plan = [
-      { clave: 'maria', rol: 'beneficiario', fila: maria, nota: 'Tiene smartphone: paga escaneando el QR de la tienda.' },
-      { clave: 'rosa', rol: 'beneficiario', fila: rosa, nota: 'No tiene smartphone: paga en la tienda con su tarjeta y su PIN.' },
-      { clave: 'julio', rol: 'comercio', fila: julio, nota: 'Afíliala para que pueda cobrar.' },
-      { clave: 'esquina', rol: 'comercio', fila: esquina, nota: 'No la afilies: así verás que la red rechaza el pago.' },
-      { clave: 'electro', rol: 'comercio', fila: electro, nota: 'Vende electrodomésticos: el vale de alimentos no le sirve.' },
+      { clave: 'maria', rol: 'beneficiario', fila: maria, perfil: 'Trabajadora · con smartphone' },
+      { clave: 'rosa', rol: 'beneficiario', fila: rosa, perfil: 'Trabajadora · paga con tarjeta' },
+      { clave: 'julio', rol: 'comercio', fila: julio, perfil: 'Bodega · alimentos · San Juan de Lurigancho' },
+      { clave: 'esquina', rol: 'comercio', fila: esquina, perfil: 'Minimarket · alimentos · Comas' },
+      { clave: 'electro', rol: 'comercio', fila: electro, perfil: 'Tienda · electrodomésticos · Comas' },
     ];
     const personas = [];
     for (const p of plan) {
@@ -96,7 +96,7 @@ export default manejar({
         nombre: p.fila.nombre,
         celular,
         pin,
-        nota: p.nota,
+        perfil: p.perfil,
         credencial: credencialDe(usuario),
       });
     }

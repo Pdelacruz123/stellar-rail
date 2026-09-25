@@ -1,31 +1,38 @@
 <script setup>
 /**
- * Tres pantallas lado a lado: la empresa, la tienda y el trabajador.
+ * Vista en vivo del espacio de prueba: la empresa, la tienda y el
+ * trabajador lado a lado, cada uno en su propio dispositivo y con su propia
+ * sesion.
  *
- * Cada una es la aplicacion de verdad, en su propio marco y con su propia
- * sesion (ver src/marco.js). Lo que se ve aqui es exactamente lo que vera
- * cada persona en su celular.
- *
- * Esta pagina solo hace de "mostrador": pasa el QR de la tienda al
- * trabajador, pasa la tarjeta de Rosa por la tienda, y avisa a todas las
- * pantallas cuando algo cambia.
+ * Cada marco es la aplicacion de verdad (ver src/marco.js). Esta pagina solo
+ * hace de "mostrador": acerca el QR de la tienda a la camara del trabajador,
+ * acerca la tarjeta de Rosa a la tienda y avisa a todos cuando algo cambia.
  */
 import {
   computed, onMounted, onUnmounted, ref, watch,
 } from 'vue';
+import { api } from '../api.js';
+import { ponerPerfil } from '../estado.js';
 import { leerDemo, persona } from '../demo.js';
 import { nombreDeMarco } from '../marco.js';
+import CuentasDePrueba from '../CuentasDePrueba.vue';
 import Icono from '../Icono.vue';
+import Marca from '../Marca.vue';
 import TarjetaImpresa from '../TarjetaImpresa.vue';
 
 const demo = leerDemo();
+const empresa = demo?.empresa.nombre.replace(' (demostración)', '') ?? '';
 const tiendas = (demo?.personas ?? []).filter((p) => p.rol === 'comercio');
+const trabajadores = (demo?.personas ?? []).filter((p) => p.rol === 'beneficiario');
 const claveTienda = ref(tiendas[0]?.clave ?? '');
-const claveTrabajador = ref('maria');
+const claveTrabajador = ref(trabajadores[0]?.clave ?? '');
 
 const tienda = computed(() => persona(demo, claveTienda.value));
 const trabajador = computed(() => persona(demo, claveTrabajador.value));
 const sinSmartphone = computed(() => Boolean(trabajador.value?.tarjeta));
+
+// El panel de cuentas se abre solo la primera vez, recien creada la demo.
+const panel = ref(Boolean(demo) && Date.now() - (demo.creadaEn ?? 0) < 5 * 60 * 1000);
 
 const marcoEmpresa = ref(null);
 const marcoTienda = ref(null);
@@ -33,7 +40,7 @@ const marcoTrabajador = ref(null);
 const marcos = () => [marcoEmpresa.value, marcoTienda.value, marcoTrabajador.value].filter(Boolean);
 
 const qrActual = ref(null);
-const tarjetaPasada = ref(null);
+const tarjetaAcercada = ref(null);
 
 function enviar(marco, mensaje) {
   marco?.contentWindow?.postMessage(mensaje, window.location.origin);
@@ -55,89 +62,108 @@ function alRecibir(e) {
 onMounted(() => window.addEventListener('message', alRecibir));
 onUnmounted(() => window.removeEventListener('message', alRecibir));
 
-// Otra tienda: su QR todavia no existe, y la tarjeta hay que volver a pasarla.
+// Otra tienda: su QR todavia no existe, y la tarjeta hay que volver a acercarla.
 watch(claveTienda, () => {
   qrActual.value = null;
-  tarjetaPasada.value = null;
+  tarjetaAcercada.value = null;
   enviar(marcoTrabajador.value, { tipo: 'stellarrail-qr', enlace: null });
 });
 
 // Un marco recien cargado no sabe lo que paso antes: se le cuenta.
 const alCargarTrabajador = () => enviar(marcoTrabajador.value, { tipo: 'stellarrail-qr', enlace: qrActual.value });
-const alCargarTienda = () => enviar(marcoTienda.value, { tipo: 'stellarrail-tarjeta', numero: tarjetaPasada.value });
+const alCargarTienda = () => enviar(marcoTienda.value, { tipo: 'stellarrail-tarjeta', numero: tarjetaAcercada.value });
 
-function pasarTarjeta() {
-  tarjetaPasada.value = trabajador.value.tarjeta;
-  enviar(marcoTienda.value, { tipo: 'stellarrail-tarjeta', numero: tarjetaPasada.value });
+function acercarTarjeta() {
+  tarjetaAcercada.value = trabajador.value.tarjeta;
+  enviar(marcoTienda.value, { tipo: 'stellarrail-tarjeta', numero: tarjetaAcercada.value });
 }
 
+async function salir() {
+  await api.salir().catch(() => {});
+  await ponerPerfil(await api.sesion());
+  window.location.hash = '#/';
+}
 const irA = (ruta) => { window.location.hash = ruta; };
 </script>
 
 <template>
-  <div class="tres">
-    <header class="tres-cabecera">
-      <div>
-        <h1>StellarRail · tres pantallas</h1>
-        <p class="apagado" style="margin:0">
-          Cada pantalla es una sesión distinta, como si fueran tres celulares.
-          El QR de la tienda se «escanea» con un clic desde la pantalla del trabajador.
-        </p>
+  <div class="vivo">
+    <header class="vivo-barra">
+      <div class="vivo-marca">
+        <Marca />
+        <span class="insignia">Espacio de prueba</span>
+        <span v-if="demo" class="apagado pequeno ocultar-movil">{{ empresa }}</span>
       </div>
-      <button class="suave" @click="irA('#/demo')"><Icono nombre="atras" /> Volver a la demostración</button>
+      <div class="acciones">
+        <button class="suave" :aria-expanded="panel" aria-controls="panel-cuentas" @click="panel = !panel">
+          Cuentas de prueba
+        </button>
+        <button class="suave" @click="salir">Salir</button>
+      </div>
     </header>
 
-    <div v-if="!demo" class="tarjeta" style="max-width:560px">
-      <h2>Primero crea la demostración</h2>
-      <button class="principal" @click="irA('#/')">Ir a la portada</button>
+    <div v-if="!demo" class="tarjeta" style="max-width:560px;margin:24px auto">
+      <h2>No hay un espacio de prueba en este navegador</h2>
+      <button class="principal" @click="irA('#/')">Ir al inicio</button>
     </div>
 
-    <div v-else class="tres-columnas">
-      <section class="columna">
-        <h2>Empresa</h2>
-        <p class="apagado pequeno">{{ demo.empresa.nombre }}</p>
-        <iframe
-          ref="marcoEmpresa" :name="nombreDeMarco(demo.empresa.credencial)" src="/#/"
-          title="Pantalla de la empresa" />
-      </section>
-
-      <section class="columna">
-        <h2>Tienda</h2>
-        <label for="elegir-tienda" class="pequeno">Ver la pantalla de</label>
-        <select id="elegir-tienda" v-model="claveTienda">
-          <option v-for="t in tiendas" :key="t.clave" :value="t.clave">{{ t.nombre }}</option>
-        </select>
-        <iframe
-          :key="tienda.clave" ref="marcoTienda" :name="nombreDeMarco(tienda.credencial)" src="/#/"
-          :title="`Pantalla de la tienda ${tienda.nombre}`" @load="alCargarTienda" />
-      </section>
-
-      <section class="columna">
-        <h2>Trabajador</h2>
-        <label for="elegir-trabajador" class="pequeno">Ver la pantalla de</label>
-        <select id="elegir-trabajador" v-model="claveTrabajador">
-          <option value="maria">María · con smartphone</option>
-          <option value="rosa">Rosa · sin smartphone, con tarjeta</option>
-        </select>
-
-        <div v-if="sinSmartphone" class="sin-smartphone">
-          <p>
-            Rosa no tiene smartphone. Paga en la tienda con esta tarjeta: la
-            tienda la escanea y Rosa marca su PIN en el equipo de la tienda.
-          </p>
-          <TarjetaImpresa :numero="trabajador.tarjeta" :nombre="trabajador.nombre" :empresa="demo.empresa.nombre" />
-          <button class="principal" @click="pasarTarjeta">
-            <Icono nombre="tienda" :tamano="26" /> Pasar la tarjeta por la tienda
-          </button>
-          <p v-if="tarjetaPasada" class="aviso ok">
-            Listo. En la pantalla de la tienda, elige «Con tarjeta» y escanéala.
-          </p>
-          <p class="apagado">PIN de Rosa: <code>{{ trabajador.pin }}</code> (en la vida real, solo ella lo sabe).</p>
+    <main v-else class="vivo-dispositivos">
+      <section class="vivo-columna vivo-pc">
+        <div class="vivo-etiqueta"><b>Empresa</b><span class="apagado">{{ empresa }}</span></div>
+        <div class="dispositivo-pc">
+          <div class="pc-barra" aria-hidden="true"><i /><i /><i /><span>stellar-rail.vercel.app</span></div>
+          <iframe
+            ref="marcoEmpresa" :name="nombreDeMarco(demo.empresa.credencial)" src="/#/"
+            title="Pantalla de la empresa" />
         </div>
-        <iframe
-          v-else :key="trabajador.clave" ref="marcoTrabajador" :name="nombreDeMarco(trabajador.credencial)" src="/#/"
-          :title="`Pantalla de ${trabajador.nombre}`" @load="alCargarTrabajador" />
       </section>
-    </div>
+
+      <section class="vivo-columna">
+        <div class="vivo-etiqueta">
+          <b>Tienda</b>
+          <select v-model="claveTienda" aria-label="Tienda">
+            <option v-for="t in tiendas" :key="t.clave" :value="t.clave">{{ t.nombre }}</option>
+          </select>
+        </div>
+        <div class="dispositivo-movil">
+          <iframe
+            :key="tienda.clave" ref="marcoTienda" :name="nombreDeMarco(tienda.credencial)" src="/#/"
+            :title="`Pantalla de la tienda ${tienda.nombre}`" @load="alCargarTienda" />
+        </div>
+      </section>
+
+      <section class="vivo-columna">
+        <div class="vivo-etiqueta">
+          <b>Trabajador</b>
+          <select v-model="claveTrabajador" aria-label="Trabajador">
+            <option v-for="t in trabajadores" :key="t.clave" :value="t.clave">{{ t.nombre }}</option>
+          </select>
+        </div>
+        <div v-if="sinSmartphone" class="sin-telefono">
+          <p class="apagado">{{ trabajador.nombre.split(' ')[0] }} no usa smartphone: paga con su tarjeta.</p>
+          <TarjetaImpresa :numero="trabajador.tarjeta" :nombre="trabajador.nombre" :empresa="empresa" />
+          <button class="si ancho" @click="acercarTarjeta">
+            <Icono nombre="tienda" /> Acercar la tarjeta a la tienda
+          </button>
+          <p v-if="tarjetaAcercada" class="apagado pequeno" role="status">
+            Tarjeta junto a {{ tienda.nombre }}. Cobra con «Con tarjeta».
+          </p>
+        </div>
+        <div v-else class="dispositivo-movil">
+          <iframe
+            :key="trabajador.clave" ref="marcoTrabajador" :name="nombreDeMarco(trabajador.credencial)" src="/#/"
+            :title="`Pantalla de ${trabajador.nombre}`" @load="alCargarTrabajador" />
+        </div>
+      </section>
+    </main>
+
+    <aside v-if="demo && panel" id="panel-cuentas" class="panel-cuentas" aria-label="Cuentas de prueba">
+      <div class="panel-cabeza">
+        <h2>Cuentas de prueba</h2>
+        <button class="suave chico" aria-label="Cerrar las cuentas de prueba" @click="panel = false"><Icono nombre="x" /></button>
+      </div>
+      <p class="apagado pequeno">Entra con estos datos desde cualquier equipo o celular.</p>
+      <CuentasDePrueba :demo="demo" compacto />
+    </aside>
   </div>
 </template>
