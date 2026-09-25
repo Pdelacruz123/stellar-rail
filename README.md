@@ -124,7 +124,7 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **API** en funciones serverless de Vercel, con base de datos en Neon que nunca guarda saldos ni claves.
 - **Aplicación web** con tres perfiles: empresa, trabajador y comercio.
 - **Demostración en un clic**: crea una empresa de prueba con dos trabajadores y tres tiendas, en una sola transacción, y muestra el celular y el PIN de cada uno.
-- **Tres pantallas lado a lado**: empresa, tienda y trabajador, cada una con su propia sesión, en una sola computadora.
+- **Diseño responsivo**: cada pantalla tiene su versión de computadora y de celular.
 - **Acceso según el riesgo**: la empresa entra con correo y contraseña; trabajador y tienda, con su celular y un PIN de 4 números. PIN cifrado con scrypt, bloqueo de 15 minutos tras 5 intentos fallidos y cierre de sesión en todos los dispositivos. La empresa invita por enlace o QR.
 - **Sin smartphone**: la empresa registra a la persona en Recursos Humanos (ella escribe su PIN) y le imprime una tarjeta con QR. La tienda la escanea y el trabajador marca su PIN en el equipo de la tienda, con un tope de S/ 100 al día. La empresa la puede anular.
 - **Alternativas al QR**: subir una foto del código, pegar el enlace, escribir el código de 6 números o recibir el cobro por WhatsApp (enlace `wa.me`, sin servicios de pago).
@@ -187,7 +187,9 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ### En línea, sin instalar nada
 
-Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. No hace falta celular ni ninguna credencial guardada en otro lado: se crea una empresa de prueba solo para ti y te muestra el acceso de cada persona.
+Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. Se crea una empresa de prueba solo para ti, con cinco cuentas, y se abre la página **Cuentas de prueba** con el correo, el celular y el PIN de cada una. No hace falta celular ni ninguna credencial guardada en otro lado.
+
+Funciona como cualquier página con cuentas: entras con una, haces lo que corresponde, sales y entras con otra. Al salir de una cuenta de prueba vuelves a la lista.
 
 | Persona | Qué representa |
 |---|---|
@@ -197,17 +199,15 @@ Abre <https://stellar-rail.vercel.app> y toca **Probar la demostración**. No ha
 | Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
 | Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
 
-Se abre la **vista en vivo**: la empresa, la tienda y el trabajador lado a lado, cada uno con su sesión, y el panel **Cuentas de prueba** con el celular y el PIN de cada persona. Como una computadora no puede apuntar su cámara a su propia pantalla, el visor del trabajador muestra el QR de la tienda de al lado y se escanea con un toque.
-
-1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar. Cada aprobación es una transacción en la red, con su comprobante.
-2. **Empresa:** crea el programa y entrega el vale.
-3. **Tienda:** escribe un monto y toca **Mostrar QR para cobrar**. **Trabajador:** toca **Pagar con QR** y confirma. La tienda recibe el aviso sin recargar.
-4. **María** paga en La Esquina con su código: **lo rechaza la red** (`op_not_authorized`).
+1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar; deja a La Esquina sin aprobar. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa y entrega el vale.
+2. **Tiendas:** entra como cada una y anota su código de 6 números (en «QR fijo»; La Esquina, sin afiliar, lo muestra en su pantalla de espera).
+3. **María:** toca **Pagar con código**, escribe el de Don Julio y un monto, y confirma. En un celular, escanearía el QR de la tienda.
+4. **María** paga en La Esquina: **lo rechaza la red** (`op_not_authorized`), con su comprobante.
 5. **María** intenta pagar en Electro Hogar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
-6. **Rosa:** elige a Rosa en la columna del trabajador, toca **Acercar la tarjeta a la tienda** y cobra en la tienda con **Con tarjeta**; Rosa marca su PIN en el teclado de la tienda.
-7. **Empresa:** vence el programa: el saldo se congela y se anula.
+6. **Don Julio** cobra a Rosa, que no tiene smartphone: **Con tarjeta**, escribe el número de su tarjeta y Rosa marca su PIN en el teclado de la tienda.
+7. **Empresa:** mira el gasto y el historial, y vence el programa: el saldo se congela y se anula.
 
-También puedes entrar como cada persona con su celular y su PIN, desde **Entrar**, en otro navegador o en un celular: es el acceso de la vida real. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
+Con dos dispositivos se ve también el aviso en vivo: la tienda recibe «Te pagaron» sin recargar. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
 
 ### El ciclo completo desde la terminal
 

@@ -312,11 +312,11 @@ Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el us
 
 La empresa invita con dos enlaces firmados, uno para trabajadores y otro para tiendas. Invitar no aprueba a nadie: el control sigue siendo la verificación, que se ejecuta en la red.
 
-### La demostración y las tres pantallas
+### La demostración
 
-**Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y muestra el celular y el PIN de cada una. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
+**Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y abre la página de cuentas de prueba con el correo, el celular y el PIN de cada una. Se recorre como cualquier página con cuentas: se entra con una, se sale y se entra con otra. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
 
-La vista de tres pantallas pone a la empresa, la tienda y el trabajador lado a lado, cada una en su propio marco con su propia sesión. La credencial de cada marco viaja en el nombre del marco (`window.name`), que nunca se envía al servidor, y la API la recibe en una cabecera que tiene prioridad sobre la cookie. Los marcos se hablan con `postMessage`, solo del mismo origen: la tienda anuncia el QR que muestra y el trabajador lo «escanea» con un clic, porque una computadora no puede apuntar su cámara a su propia pantalla.
+Cada pantalla es responsiva: en computadora, la tienda y el trabajador ven dos columnas; en celular, una.
 
 ### Sin smartphone
 
@@ -405,7 +405,7 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
 - `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con PIN y con tarjeta, tope diario, baja y vencimiento.
-- `src/`: portada, demostración, tres pantallas y las tres vistas, probadas en un navegador real con dispositivos separados: aprobación, entrega, pago con QR, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, foto del QR, enlace pegado, WhatsApp, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
+- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega, pago con QR, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, foto del QR, enlace pegado, WhatsApp, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 
