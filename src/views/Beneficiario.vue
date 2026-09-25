@@ -164,11 +164,27 @@ function alLeer(leido) {
 // Fuentes separadas y de valor simple: asi solo reacciona cuando cambia el
 // enlace o la persona. Con un unico arreglo reaccionaria a cada recarga de
 // datos, y volveria a abrir un cobro ya usado encima de lo que se esta viendo.
-watch([() => props.codigo, () => props.cobro, () => yo.value?.id], ([codigo, cobro, id]) => {
-  if (!id || !puedePagar.value) return;
-  if (cobro) irACobro(cobro);
-  else if (codigo) irATienda(codigo);
-}, { immediate: true });
+// Espera a saber quien es y cuanto tiene: justo despues de entrar, los datos
+// y el saldo llegan un instante despues que el enlace. Cada enlace se atiende
+// una sola vez, y si no se puede pagar se dice por que.
+let enlaceAtendido = '';
+watch(
+  [() => props.codigo, () => props.cobro, () => yo.value?.id, () => enLaRed.value !== null],
+  ([codigo, cobro, id, saldoListo]) => {
+    const enlace = cobro || codigo;
+    if (!enlace || enlace === enlaceAtendido || !id || !saldoListo) return;
+    enlaceAtendido = enlace;
+    if (yo.value.estado !== 'verificado') {
+      aviso.value = 'Todavía no puedes pagar: tu empresa aún no te aprueba.';
+    } else if (enLaRed.value.congelado) {
+      aviso.value = 'No se puede pagar: tu vale venció.';
+    } else if (!puedePagar.value) {
+      aviso.value = 'No tienes saldo en tu vale para pagar.';
+    } else if (cobro) irACobro(cobro);
+    else irATienda(codigo);
+  },
+  { immediate: true },
+);
 
 function continuarMonto() {
   const monto = montoValido(pago.value.monto);
