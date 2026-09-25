@@ -114,7 +114,7 @@ En el MVP la verificación es **simulada**: no se procesan datos reales de ident
 | **Con saldo** | El emisor entrega · `Payment` | Puede pagar en comercios afiliados, tantas veces como quiera |
 | **Congelado** | Vence el programa · `Set Trust Line Flags` | Conserva el saldo pero no puede moverlo |
 | **Anulado** | `Clawback` | Saldo en cero. Fin del ciclo |
-| **De baja** | La empresa lo da de baja · congelar y anular en una transacción | Nada. Su tarjeta se anula y sus sesiones se cierran |
+| **De baja** | La empresa lo da de baja · no toca la red | No recibe más vales. Conserva lo que tiene y puede gastarlo hasta que el programa venza, como en las tarjetas de beneficios |
 
 Los rechazos que hace cumplir la red, con el código que devuelve:
 
@@ -131,7 +131,7 @@ Los dos primeros están reproducidos y verificados en testnet. Un rechazo a nive
 
 ## 5. Datos
 
-Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` y `cobros_usados` (para no emitir ni cobrar dos veces), `cobros_codigos` (el código de 6 números de cada cobro, que vive lo mismo que el cobro) y `candados` (el turno del emisor).
+Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` (una por trabajador y por mes en la prestación alimentaria, una sola en un bono) y `cobros_usados`, para no emitir ni cobrar dos veces; `codigos_pago`, el código de pago de cada trabajador, que vale 5 minutos y sirve una vez; y `candados`, el turno del emisor.
 
 ```sql
 -- El espacio de una empresa. Cada demostracion es un espacio propio, para
@@ -156,22 +156,6 @@ CREATE TABLE usuarios (
   version         INTEGER NOT NULL DEFAULT 1,  -- subirla cierra todas sus sesiones
   intentos        INTEGER NOT NULL DEFAULT 0,
   bloqueado_hasta TIMESTAMPTZ
-);
-
--- Tarjetas impresas de quien no tiene smartphone, y sus pagos del dia
--- para el tope de S/ 100.
-CREATE TABLE tarjetas (
-  numero          TEXT PRIMARY KEY,         -- SR-XXXX-XXXX
-  sesion_id       TEXT REFERENCES sesiones(id),
-  beneficiario_id INTEGER NOT NULL,
-  estado          TEXT NOT NULL DEFAULT 'activa'   -- activa | anulada
-);
-CREATE TABLE pagos_tarjeta (
-  id              SERIAL PRIMARY KEY,
-  numero          TEXT NOT NULL,
-  beneficiario_id INTEGER NOT NULL,
-  monto           NUMERIC(18,7) NOT NULL,
-  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE programas (
@@ -237,14 +221,14 @@ Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de
 | `GET /api/sesion` | Quién soy, o nadie | Todos |
 | `POST /api/sesion` | `entrar` (celular + PIN o correo + contraseña), `salir`, `cerrarTodas`, `registrarEmpresa`, ver una invitación, `restablecer` el PIN | Según el caso |
 | `POST /api/demo` | Crea la demostración: empresa, dos trabajadores y tres tiendas, con sus accesos | Cualquiera, hasta 30 por hora |
-| `GET /api/beneficiarios` | La empresa ve a todos, con su celular y su tarjeta; un trabajador, solo a sí mismo | Empresa, trabajador |
+| `GET /api/beneficiarios` | La empresa ve a todos, con su celular; un trabajador, solo a sí mismo | Empresa, trabajador |
 | `POST /api/beneficiarios` | Registrarse con una invitación (nombre, celular y PIN): crea su cuenta y su trustline, en `pendiente` | Invitados, empresa |
-| `POST /api/beneficiarios` `{accion}` | `verificar` (al aprobar **ejecuta `autorizar` en la red**), `baja`, `restablecer`, `tarjeta`, `anularTarjeta` | Empresa |
+| `POST /api/beneficiarios` `{accion}` | `verificar` (al aprobar **ejecuta `autorizar` en la red**), `baja`, `restablecer` | Empresa |
 | `GET` y `POST /api/comercios` | Lo mismo para comercios, con su rubro, fijo desde el registro | Según el caso |
-| `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: QR firmado y código de 6 números, caducan a los 10 minutos | Tienda |
+| `POST /api/comercios` `{accion:'cobrar'}` | La tienda genera un **cobro con monto**: QR firmado que caduca a los 10 minutos | Tienda |
 | `GET /api/programas` | Programas del espacio, con sus rubros y su vencimiento | Todos |
-| `POST /api/programas` | Crear, `entregar` a los trabajadores elegidos (`{beneficiarios}`) o `vencer` | Empresa |
-| `POST /api/pagos` | El trabajador abre un cobro, por su QR (`{cobro}`) o su código (`{codigo}`): con `accion:'ver'` recibe el resumen (tienda, monto, si su vale la cubre, si pide PIN); sin ella, paga, con PIN por encima de S/ 50. La tienda cobra con tarjeta (`{tarjeta, pin, monto}`) | Trabajador, tienda |
+| `POST /api/programas` | Crear, `entregar` a los trabajadores elegidos (`{beneficiarios}`; la prestación alimentaria, una vez por mes) o `vencer`, que devuelve cuánto quedó sin usar | Empresa |
+| `POST /api/pagos` | Con QR: el trabajador abre el cobro (`{accion:'ver', cobro}`: tienda, monto, si su vale la cubre, si pide PIN) y lo paga (`{cobro, pin?}`), con PIN por encima de S/ 50. Con código: el trabajador lo genera con su PIN (`{accion:'miCodigo', pin}`) y su celular sigue el cobro (`{accion:'estadoCodigo'}`); la tienda cobra con `{codigo, monto}` | Trabajador, tienda |
 | `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
 **Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción se pasaría del límite, además de tener muchos paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7.
@@ -295,6 +279,14 @@ Para anular hay que saber cuánto queda. Si se lee el saldo y luego se congela e
 
 Congelar y anular juntas son atómicas: si el saldo cambió, falla la transacción entera y no se aplica nada. Se vuelve a leer y se reintenta. Comprobado provocando la carrera a propósito en testnet.
 
+### Qué pasa con lo que no se usa
+
+Sigue el modelo de las tarjetas de beneficios. En Pluxee Perú, las recargables acumulan lo no usado mes a mes; en las de una sola recarga, pasada la fecha, el saldo no se recupera; la empresa puede fijar plazos de uso, y quien deja la empresa sigue usando su saldo mientras la tarjeta esté vigente.
+
+- **Durante el programa**, lo no usado se acumula: la prestación alimentaria se recarga cada mes sobre el saldo que quedó.
+- **Al vencer**, en la fecha que fija la empresa, se congela y se anula lo que quede. El clawback destruye ese saldo, no se lo devuelve al emisor: la empresa recupera su respaldo en soles, que deja de estar comprometido. La respuesta de `vencer` dice cuánto era, y el panel lo muestra.
+- **Quien se da de baja** no recibe más vales, pero conserva lo que tiene y lo puede gastar hasta el vencimiento. Su saldo se anula con el de todos.
+
 ### Acceso según el riesgo
 
 Cada quien entra con lo que corresponde a lo que puede mover:
@@ -306,7 +298,7 @@ Cada quien entra con lo que corresponde a lo que puede mover:
 
 El PIN y la contraseña se guardan cifrados con **scrypt** y una sal por usuario. Cinco intentos fallidos bloquean el acceso **15 minutos**; el contador es el mismo para entrar y para pagar, así que nadie prueba PIN por un camino cuando el otro ya lo bloqueó. Se rechazan 1234, 4321 y los dígitos repetidos, y nada más: cada regla extra es una traba para quien menos se maneja con el celular.
 
-Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el usuario y su *versión*. Subir la versión invalida todas sus credenciales: así funciona «cerrar sesión en todos mis dispositivos», y también cambiar el PIN o dar de baja.
+Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el usuario y su *versión*. Subir la versión invalida todas sus credenciales: así funciona «cerrar sesión en todos mis dispositivos», y también cambiar el PIN.
 
 **Sin SMS ni correos de verificación.** En su versión gratuita solo llegan al desarrollador, así que quien pruebe la aplicación no podría recibirlos. Para un PIN olvidado, la empresa genera un **enlace de un solo uso**, válido 24 horas, y se lo pasa a la persona por WhatsApp o con un QR en Recursos Humanos. Guardar el PIN nuevo no inicia sesión: el enlace puede abrirse en el equipo de Recursos Humanos, con la cuenta de la empresa abierta, y no debe cambiarla. Por lo mismo, una invitación abierta con otra cuenta en el equipo avisa y ofrece salir primero.
 
@@ -318,15 +310,9 @@ La entrada al sitio es el inicio de sesión, como en cualquier página con cuent
 
 Cada pantalla es responsiva: en computadora, la tienda y el trabajador ven dos columnas; en celular, una.
 
-### Sin smartphone
+### El PIN, según el riesgo
 
-Quien no tiene smartphone recibe una **tarjeta impresa** con un QR y un número (`SR-XXXX-XXXX`). La tienda escribe el monto, escanea la tarjeta y el trabajador marca su PIN en el teclado de la tienda. La tarjeta sola no paga: siempre pide PIN, tiene un **tope de S/ 100 al día** y la empresa la puede anular. El tope se reserva antes de enviar, dentro de una transacción con un candado por trabajador, para que dos cobros simultáneos no lo salten.
-
-Con smartphone, el PIN se pide solo por encima de S/ 50. Por debajo basta confirmar, como en Yape: el celular ya tiene la sesión abierta.
-
-### Si el QR no se puede escanear
-
-Debajo del QR, la tienda muestra un **código de 6 números** propio de ese cobro. El trabajador lo escribe en **Pagar** y sigue igual: ve el resumen y confirma. Es lo que hacen las tarjetas de alimentación con QR, y basta con una sola alternativa: más opciones confunden a quien menos se maneja con el celular. El código vive lo mismo que el cobro y se puede reutilizar cuando vence.
+Al pagar con QR, el PIN se pide solo por encima de S/ 50. Por debajo basta confirmar, como en Yape: el celular ya tiene la sesión abierta. El código de pago siempre pide el PIN al generarlo, porque sirve para cualquier monto: es lo que autoriza el pago.
 
 ### Rubros: lo que la red ve y lo que no
 
@@ -347,17 +333,24 @@ Así funcionan las tarjetas de alimentación: la red de pagos restringe por come
 
 El tipo de programa fija los rubros posibles. En la **prestación alimentaria** de la Ley 28051 solo cabe alimentos, porque la ley lo exige, y la empresa no puede cambiarlo. En un **bono o incentivo** la empresa elige.
 
-### El QR, pensado para quien no se maneja bien con el celular
+### Cobrar: con QR o con el código del trabajador
 
-Es el modelo de las tarjetas de alimentación con QR: **la tienda pone el monto y el trabajador confirma**. Así el trabajador nunca escribe un monto, que es donde más se equivoca quien no se maneja bien con el celular.
+Como en las apps de vales de verdad, **la tienda pone el monto** y el trabajador nunca lo escribe, que es donde más se equivoca quien no se maneja bien con el celular. Al entrar, el trabajador ve su vale, las dos formas de pagar, las tiendas donde sirve y sus movimientos.
 
-1. La tienda escribe cuánto cobra y toca **Cobrar con QR**. Aparece el QR y, debajo, el código de 6 números.
-2. El trabajador toca **Pagar**. La app abre la cámara, como Yape, porque muchos no saben que la cámara del celular lee códigos QR. Si no hay cámara o no hay permiso, escribe el código.
+**Con QR.**
+
+1. La tienda escribe cuánto cobra y toca **Mostrar QR**.
+2. El trabajador toca **Escanear QR**. La app abre la cámara, como Yape, porque muchos no saben que la cámara del celular lee códigos QR.
 3. Ve **a quién le paga, cuánto y si su vale sirve ahí**, antes de pagar. Si el programa no cubre esa tienda o no le alcanza el saldo, se lo dice en ese momento.
 4. Confirma: con un toque hasta S/ 50, con su PIN por encima.
 5. La tienda ve «Te pagaron» sin recargar.
 
-Quien no tiene smartphone paga con su tarjeta: la tienda toca **El cliente tiene tarjeta**, la escanea o escribe su número, y el trabajador marca su PIN en el equipo de la tienda.
+**Con el código del trabajador**, cuando no puede escanear o lo prefiere. Es el modelo del código de aprobación de Yape, que vale 2 minutos y sirve para una compra.
+
+1. El trabajador toca **Mostrar mi código** y marca su PIN. Aparece un código de 6 números que vale 5 minutos y sirve para un solo pago; generar otro anula el anterior.
+2. Se lo dicta a la tienda, que toca **Cobrar con su código**, escribe el monto y el código.
+3. El pago sale en ese momento. El celular del trabajador pregunta cada 2 segundos y muestra «Pago hecho», o quién intentó cobrarle y por qué no pasó.
+4. Si la red o la aplicación lo rechazan, no se movió dinero y el código sigue sirviendo hasta vencer.
 
 El cobro viaja en el propio enlace, **firmado por el servidor**:
 
@@ -373,7 +366,7 @@ El vencimiento lo decide solo el servidor. El celular cuenta hacia atrás desde 
 
 ### Entregar: a quién y sin duplicar
 
-La empresa **elige a quién entrega**: un bono puede ser solo para un área o para quienes cumplieron una meta. Por defecto aparecen marcados todos los que aún no recibieron; quien ya recibió el vale de ese programa no se puede volver a elegir. Si alguien quedó congelado por un programa anterior, la entrega lo reactiva primero, en la red.
+La empresa **elige a quién entrega**: un bono puede ser solo para un área o para quienes cumplieron una meta. Por defecto aparecen marcados todos los que aún no recibieron; quien ya recibió el vale de ese programa no se puede volver a elegir. La prestación alimentaria es recargable, como las tarjetas de alimentación: se entrega una vez por mes y lo no usado se acumula hasta el vencimiento; un bono, una sola vez. Si alguien quedó congelado por un programa anterior, la entrega lo reactiva primero, en la red.
 
 Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos en "Entregar" no emiten dos veces el vale, y quien se verifica después de una entrega recibe el suyo en la siguiente. "Entregado" cuenta vales emitidos de verdad, cada uno con su hash; no es una estimación a partir de cuántos trabajadores hay verificados.
 
@@ -413,8 +406,8 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 - `lib/riel/`: las operaciones completas, con el hash calculado antes de enviar, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
-- `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con PIN y con tarjeta, tope diario, baja y vencimiento.
-- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega a los elegidos, cobro con QR y código, rechazo de la red, control de rubros, PIN sobre S/ 50, tarjeta con PIN, cobro repetido o caducado, baja, PIN nuevo y vencimiento. Con estilo sobrio, a la espera del diseño definitivo.
+- `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con QR y con código de pago, baja que conserva el saldo y vencimiento que informa lo no usado.
+- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega a los elegidos, cobro con QR y con el código del trabajador, aviso en su celular, rechazo de la red, control de rubros, PIN sobre S/ 50, código repetido, baja que conserva el saldo, PIN nuevo y vencimiento.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 

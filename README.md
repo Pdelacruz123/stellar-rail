@@ -29,9 +29,9 @@ Falta una forma de entregar dinero restringido donde las reglas se cumplan solas
 Un vale digital emitido como activo en Stellar, con las reglas dentro del activo:
 
 1. **Verificación:** el beneficiario y el comercio se registran; el emisor los verifica y, al aprobarlos, los autoriza en la red.
-2. **Entrega:** la empresa asigna saldo a sus trabajadores verificados.
-3. **Pago:** la bodega escribe cuánto cobra y muestra un QR. El trabajador lo escanea desde la app y solo confirma: no escribe nada. Si el comercio no está autorizado, **la red rechaza el pago**.
-4. **Vencimiento:** al vencer el programa, el emisor congela el saldo y lo anula.
+2. **Entrega:** la empresa elige a qué trabajadores verificados les entrega el vale. La prestación alimentaria se recarga cada mes y lo no usado se acumula.
+3. **Pago:** la bodega escribe cuánto cobra y el trabajador paga de una de dos formas: escanea el QR de la bodega y confirma, o le dicta su código de pago, que vale 5 minutos y sirve para un solo pago. Nunca escribe un monto. Si el comercio no está autorizado, **la red rechaza el pago**.
+4. **Vencimiento:** en la fecha que fija la empresa, el emisor congela el saldo y anula lo que no se usó. Ese dinero no se pierde para la empresa: su respaldo en soles deja de estar comprometido.
 
 Todo queda registrado en un libro público: cualquiera puede comprobar cada paso con un enlace.
 
@@ -80,7 +80,7 @@ La **Ley 28051** de prestaciones alimentarias y su reglamento (D.S. 013-2003-TR)
 - Las **bodegas** figuran expresamente entre los proveedores de alimentos en crudo.
 - Las administradoras deben inscribirse en un registro del Ministerio de Trabajo y cumplir requisitos, entre ellos un capital mínimo de 300 UIT.
 
-Aclaración: el vencimiento no es un requisito de la ley. Es una regla que el emisor define en su programa.
+Aclaración: el vencimiento no es un requisito de la ley. Es una regla que el emisor define en su programa, como hacen las administradoras: en Pluxee Perú, la empresa puede fijar plazos de uso del saldo; las tarjetas recargables acumulan lo no usado mes a mes, y en las de una sola recarga, pasada la fecha, el saldo "no podrá recuperarse". Quien deja la empresa puede seguir usando su saldo mientras la tarjeta esté vigente. StellarRail sigue ese modelo: lo no usado se acumula durante el programa, al vencer se anula, y quien se da de baja conserva lo suyo hasta el vencimiento.
 
 Por la misma razón, en un programa de **prestación alimentaria** la empresa no elige en qué se gasta: la aplicación fija el rubro en alimentos. En un **bono o incentivo**, que no está sujeto a esta ley, la empresa sí elige los rubros.
 
@@ -110,7 +110,7 @@ Las administradoras existentes prueban que el mercado existe y paga. Nuestro dif
 | Frontend | Vue 3 + Vite | Vistas de emisor, beneficiario y comercio |
 | API | Funciones serverless de Vercel (Node) | Firmar y enviar transacciones; registro, acceso y verificación |
 | Riel | SDK de JavaScript de Stellar | Emisión, autorización, pago, congelado, anulación |
-| Datos | Neon (PostgreSQL) | Programas, comercios, beneficiarios, accesos (PIN cifrado con scrypt), tarjetas y eventos. **Nunca saldos ni claves de cuentas** |
+| Datos | Neon (PostgreSQL) | Programas, comercios, beneficiarios, accesos (PIN cifrado con scrypt), códigos de pago y eventos. **Nunca saldos ni claves de cuentas** |
 | Red | Stellar Testnet vía Horizon | Fuente de verdad de saldos y autorizaciones |
 
 **Decisión del MVP:** el backend custodia las claves de las cuentas de demo y firma por ellas. Lo verificable no es la custodia, sino que las reglas son públicas y las hace cumplir la red. En producción, cada usuario tendría su propia billetera.
@@ -126,11 +126,12 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **Demostración en un clic**: crea una empresa de prueba con dos trabajadores y tres tiendas, en una sola transacción, y muestra el celular y el PIN de cada uno.
 - **Diseño responsivo**: cada pantalla tiene su versión de computadora y de celular.
 - **Acceso según el riesgo**: la empresa entra con correo y contraseña; trabajador y tienda, con su celular y un PIN de 4 números. PIN cifrado con scrypt, bloqueo de 15 minutos tras 5 intentos fallidos y cierre de sesión en todos los dispositivos. La empresa invita por enlace o QR.
-- **Sin smartphone**: la empresa registra a la persona en Recursos Humanos (ella escribe su PIN) y le imprime una tarjeta con QR. La tienda la escanea y el trabajador marca su PIN en el equipo de la tienda, con un tope de S/ 100 al día. La empresa la puede anular.
-- **Gestión**: dar de baja a un trabajador (congela y anula su saldo en una transacción) y restablecer su PIN con un enlace de un solo uso, sin SMS.
-- **Cobro como el de las tarjetas de alimentación con QR**: la tienda escribe el monto y muestra un QR con un código de 6 números debajo. El trabajador toca **Pagar**, escanea el QR o escribe el código, ve a quién le paga y cuánto, y confirma. El cobro va firmado por el servidor, caduca a los 10 minutos y no se puede pagar dos veces.
+- **Registro en persona**: la empresa puede registrar a un trabajador en Recursos Humanos; la persona escribe su PIN en ese equipo.
+- **Gestión**: dar de baja a un trabajador (no recibe más vales y conserva lo suyo hasta el vencimiento, como en las tarjetas de beneficios) y restablecer su PIN con un enlace de un solo uso, sin SMS.
+- **Al entrar, el trabajador ve con qué y dónde pagar**: su vale con el saldo leído de la red, las dos formas de pago, las tiendas donde sirve y sus movimientos con comprobante.
+- **Dos formas de cobrar, y el trabajador nunca escribe un monto**. Con QR: la tienda escribe el monto y muestra un QR firmado por el servidor, que caduca a los 10 minutos y se paga una sola vez; el trabajador lo escanea, ve a quién le paga y cuánto, y confirma, con PIN por encima de S/ 50. Con código: como el código de aprobación de Yape, el trabajador genera con su PIN un código de 6 números que vale 5 minutos y sirve para un solo pago, y se lo dicta a la tienda; su celular muestra el pago, o por qué no pasó, al instante.
 - **Aviso en vivo** a la bodega cuando le pagan, en pantalla y en voz alta ("Recibiste 18 soles con 50 céntimos").
-- **Entregas a quien la empresa elija**: un bono puede ser solo para algunos trabajadores. Dos clics en "Entregar" no emiten dos veces el vale.
+- **Entregas a quien la empresa elija**: un bono puede ser solo para algunos trabajadores. La prestación alimentaria se recarga una vez por mes. Dos clics en "Entregar" no emiten dos veces el vale.
 - **Rubros por programa**: cada tienda tiene un rubro fijo desde que la afilian, que viaja en el memo de cada transacción. Que el programa lo cubra lo comprueba la aplicación.
 - **Evidencias 9 a 18**: el ciclo completo ejecutado por la aplicación desplegada.
 
@@ -192,21 +193,21 @@ Para cambiar de persona, sales y entras con otra.
 
 | Persona | Qué representa |
 |---|---|
-| María | Trabajadora con smartphone: paga el cobro de la tienda con su QR o su código |
-| Rosa | Trabajadora sin smartphone: paga con una tarjeta impresa y su PIN |
+| María | Trabajadora: paga escaneando el QR de la tienda o dictando su código |
+| Rosa | Trabajadora: se da de baja y conserva su saldo |
 | Bodega Don Julio | Tienda para afiliar |
 | Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
 | Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
 
-1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar; deja a La Esquina sin aprobar. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa y entrega el vale.
-2. **Don Julio:** escribe el monto y toca **Cobrar con QR**. Aparece el QR y, debajo, un código de 6 números.
-3. **María:** toca **Pagar** y escribe ese código (en un celular, escanearía el QR). Ve a quién le paga y cuánto, y confirma. Don Julio ve «Te pagaron» al instante.
-4. **La Esquina** cobra y María paga: **lo rechaza la red** (`op_not_authorized`), con su comprobante.
-5. **Electro Hogar** cobra y María intenta pagar: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
-6. **Don Julio** cobra a Rosa, que no tiene smartphone: **El cliente tiene tarjeta**, escribe el número de su tarjeta y Rosa marca su PIN en el teclado de la tienda.
-7. **Empresa:** mira el gasto y el historial, y vence el programa: el saldo se congela y se anula.
+1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar; deja a La Esquina sin aprobar. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa, elige a quién entregar y entrega la recarga del mes.
+2. **María** entra: ve su vale, cómo pagar y dónde usarlo.
+3. **Don Julio** escribe el monto y toca **Mostrar QR**. María, en su celular, lo escanea y confirma. Don Julio ve «Te pagaron» al instante.
+4. **María** toca **Mostrar mi código** y marca su PIN. **Don Julio** toca **Cobrar con su código**, escribe el monto y el código, y cobra. En una sola ventana: anota el código de María, sal y entra como Don Julio; vale 5 minutos.
+5. **La Esquina** cobra con el código de María: **lo rechaza la red** (`op_not_authorized`), con su comprobante. El celular de María lo muestra.
+6. **Electro Hogar** cobra: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
+7. **Empresa:** da de baja a Rosa, que conserva su saldo; mira el gasto y el historial, y vence el programa: lo no usado se anula y la empresa ve cuánto era.
 
-Con dos dispositivos se ve también el aviso en vivo: la tienda recibe «Te pagaron» sin recargar. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
+Con dos dispositivos se ve también el aviso en vivo: la tienda recibe «Te pagaron» sin recargar, y el celular de la trabajadora ve el cobro con su código. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
 
 ### El ciclo completo desde la terminal
 
@@ -252,6 +253,7 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 
 - **El clawback destruye el saldo.** No lo devuelve como tokens al emisor; el emisor recupera su respaldo en soles, que deja de estar comprometido.
 - **El vencimiento no lo dispara la red.** Stellar no ejecuta tareas programadas. En el MVP lo ejecuta el emisor con un botón.
+- **El trabajador necesita un celular con internet** para pagar: con él escanea el QR o genera su código.
 - **La red no ve qué se compra.** Stellar controla quién puede tener el vale y dónde se gasta, no el producto: la canasta solo la ve el comercio. Es igual con las tarjetas de alimentación: restringen por tipo de comercio, y que en caja se cobren solo alimentos es responsabilidad del comercio afiliado. Aquí cada tienda tiene **un rubro fijo, asignado al afiliarla**, que viaja en el memo de cada transacción, que es público. Que un programa cubra o no ese rubro **lo comprueba la aplicación** en este MVP; hacerlo cumplir en la cadena requiere un contrato Soroban. Si una tienda cobra lo que no debe, la sanción, desafiliarla, sí la hace cumplir la red.
 - **Un programa vigente por empresa a la vez.** Todos los vales son el mismo activo, `ALIM`, así que los saldos de dos programas se mezclarían en la misma cuenta. Separarlos exige un activo por programa.
 - **Verificación simulada.** No se procesan datos reales de identidad.
@@ -285,6 +287,7 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 - Ley 28051: [texto en el Congreso](https://www2.congreso.gob.pe/sicr/cendocbib/con4_uibd.nsf/763AF0BB60F8052805257E230074B436/$FILE/1_LEY_28051_02_08_2003.pdf) · [reglamento en FAOLEX](https://www.fao.org/faolex/results/details/es/c/LEX-FAOC198875/) · [requisitos de las administradoras](https://actualidadlaboraldigital.com/aprueban-reglamentos-de-la-ley-de-prestaciones-alimentarias-en-beneficios-de-los-trabajadores-sujetos-al-regimen-laboral-de-la-actividad-privada/)
 - Pagos en bodegas: [Gestión, marzo 2026](https://gestion.pe/economia/empresas/yape-y-plin-dominan-pagos-en-bodegas-de-lima-73-de-ventas-ya-se-realiza-con-billeteras-digitales-noticia/) · [Diario Financiero, marzo 2026](https://www.df.cl/ripe/billeteras-yape-y-plin-dominan-pagos-en-bodegas-de-lima-73-de-ventas)
 - Competencia: [Pluxee Alimentación](https://www.pluxee.pe/productos/pluxee-alimentacion/) · [Edenred Alimentación](https://www.edenred.com.pe/alimentacion/)
+- Cómo funciona un beneficio real: [términos de las tarjetas Pluxee Perú](https://consumidores.pluxee.pe/footer_pluxee/T%C3%A9rminos%20y%20Condiciones%20Tarjetas%20Pluxee.pdf) (vigencia y plazos de uso) · [¿se acumula el saldo?](https://www.pluxee.pe/helpcenter/beneficiario/se-acumula-saldo-tarjeta-pluxee/) · [usar la tarjeta sin trabajar en la empresa](https://www.pluxee.pe/helpcenter/beneficiario/usar-tarjeta-pluxee-sin-trabajar-en-la-empresa/) · [código de aprobación de Yape](https://www.yape.com.pe/productos/aprobar-compras)
 - SEP-12: [especificación](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0012.md)
 
 ## Licencia y terceros
