@@ -296,7 +296,7 @@ const imprimir = () => window.print();
       </div>
     </section>
 
-    <div v-if="recibido" class="aviso ok aviso-grande" role="alert">
+    <div v-if="recibido && !(modo === 'monto' && cobroActivo?.pagado)" class="aviso ok aviso-grande" role="alert">
       <span class="pequeno">Te pagaron</span>
       <strong>{{ soles(recibido.monto) }}</strong>
       <span class="pequeno">
@@ -365,7 +365,7 @@ const imprimir = () => window.print();
           <p class="esperando" aria-live="polite">
             <span class="punto" aria-hidden="true" /> Esperando el pago · vence en {{ minutos }}
           </p>
-          <a class="boton si ancho" :href="whatsapp" target="_blank" rel="noopener">
+          <a class="boton ancho" :href="whatsapp" target="_blank" rel="noopener">
             <Icono nombre="mensaje" /> Enviar el cobro por WhatsApp
           </a>
           <button class="secundario" @click="nuevoCobro"><Icono nombre="x" /> Cancelar cobro</button>
