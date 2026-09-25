@@ -123,10 +123,12 @@ export default manejar({
         if (!pinValido(datos.pin)) {
           return json(res, 400, { error: 'El PIN son 4 números. No uses 1234 ni el mismo número repetido.' });
         }
+        // Guarda el PIN y NO inicia sesion: el enlace puede abrirse en un
+        // equipo donde otra persona tiene su cuenta abierta (Recursos Humanos,
+        // por ejemplo). La persona entra despues con su celular y su PIN nuevo.
         const { hash, sal } = await cifrar(datos.pin);
-        const actualizado = await db.cambiarSecreto(usuario.id, hash, sal);
-        iniciarSesion(req, res, actualizado);
-        return json(res, 200, await perfil(yoDe(actualizado)));
+        await db.cambiarSecreto(usuario.id, hash, sal);
+        return json(res, 200, { ok: true, rol: usuario.rol, nombre: await nombreDe(yoDe(usuario)) });
       }
 
       default:

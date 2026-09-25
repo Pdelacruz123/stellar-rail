@@ -7,6 +7,7 @@ import {
 import Icono from '../Icono.vue';
 import Marca from '../Marca.vue';
 import { RUBROS, TIPOS } from '../../lib/rubros.js';
+import { REGLA_PIN, pinValido, problemaDelPin } from '../../lib/reglas.js';
 import Prueba from '../Prueba.vue';
 import Qr from '../Qr.vue';
 import TarjetaImpresa from '../TarjetaImpresa.vue';
@@ -95,15 +96,13 @@ const confirmarBaja = ref(null);
  */
 const altaRrhh = ref({ abierta: false, nombre: '', celular: '', pin: '', pin2: '' });
 const avisoAlta = ref('');
+const problemaAlta = computed(() => problemaDelPin(altaRrhh.value.pin, altaRrhh.value.pin2));
+const altaLista = computed(() => pinValido(altaRrhh.value.pin) && altaRrhh.value.pin === altaRrhh.value.pin2
+  && altaRrhh.value.nombre.trim() && altaRrhh.value.celular.trim());
 async function registrarTrabajador() {
   avisoAlta.value = '';
   const a = altaRrhh.value;
-  if (a.pin !== a.pin2) {
-    avisoAlta.value = 'Los dos PIN no son iguales. Que la persona los escriba otra vez.';
-    a.pin = '';
-    a.pin2 = '';
-    return;
-  }
+  if (!altaLista.value) return;
   trabajando.value = 'alta';
   try {
     const r = await accion(() => api.registrarBeneficiario({ nombre: a.nombre, celular: a.celular, pin: a.pin }));
@@ -199,6 +198,7 @@ const nuevo = ref({
   tipo: 'alimentaria',
   rubros: ['alimentos'],
 });
+const hoyLima = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
 const rubrosFijos = computed(() => TIPOS[nuevo.value.tipo].fijo);
 watch(() => nuevo.value.tipo, (tipo) => {
   if (TIPOS[tipo].fijo) nuevo.value.rubros = [...TIPOS[tipo].rubros];
@@ -354,6 +354,10 @@ function describir(e) {
   }
   if (e.tipo === 'vencer') return { titulo: 'Programa vencido', detalle: 'Vales congelados y saldo no usado anulado' };
   if (e.tipo === 'baja') return { titulo: 'Baja de un trabajador', detalle: 'Vale congelado y saldo anulado' };
+  if (e.tipo === 'descongelar') {
+    const n = numero(/\((\d+) cuentas\)/);
+    return { titulo: `${n === 1 ? 'Cuenta reactivada' : `${n} cuentas reactivadas`} para el programa nuevo`, detalle: '' };
+  }
   return { titulo: t, detalle: '' };
 }
 const cuando = (f) => new Date(f).toLocaleString('es-PE', {
@@ -540,7 +544,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
               </div>
               <div class="campo">
                 <label for="pv">Vence el</label>
-                <input id="pv" v-model="nuevo.venceEl" type="date" required>
+                <input id="pv" v-model="nuevo.venceEl" type="date" :min="hoyLima" required>
               </div>
             </div>
             <button class="si" :disabled="trabajando === 'crear' || !nuevo.rubros.length">Crear programa</button>
@@ -609,7 +613,7 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
                 <input id="rt-cel" v-model="altaRrhh.celular" type="tel" inputmode="numeric" autocomplete="off" required>
               </div>
             </div>
-            <p class="apagado pequeno">Pásale el equipo a la persona para que elija su PIN. Nadie más debe verlo.</p>
+            <p class="apagado pequeno">Pásale el equipo a la persona para que elija su PIN. Nadie más debe verlo. {{ REGLA_PIN }}</p>
             <div class="pareja">
               <div class="campo">
                 <label for="rt-pin">PIN de 4 números</label>
@@ -620,9 +624,10 @@ const empezando = computed(() => primerosPasos.value.some((p) => !p.hecho) && !p
                 <input id="rt-pin2" v-model="altaRrhh.pin2" type="password" inputmode="numeric" maxlength="4" autocomplete="off" required>
               </div>
             </div>
+            <p v-if="problemaAlta" class="aviso espera" role="status">{{ problemaAlta }}</p>
             <p v-if="avisoAlta" class="aviso no" role="alert">{{ avisoAlta }}</p>
             <div class="acciones">
-              <button class="si" :disabled="trabajando === 'alta'">{{ trabajando === 'alta' ? 'Registrando…' : 'Registrar' }}</button>
+              <button class="si" :disabled="trabajando === 'alta' || !altaLista">{{ trabajando === 'alta' ? 'Registrando…' : 'Registrar' }}</button>
               <button type="button" class="suave" @click="altaRrhh.abierta = false">Cancelar</button>
             </div>
             <p class="apagado pequeno" style="margin-top:10px">Queda por aprobar en «Inicio». Después le das su tarjeta desde esta lista.</p>

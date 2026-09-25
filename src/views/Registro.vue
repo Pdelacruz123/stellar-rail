@@ -9,10 +9,11 @@
  * Registrarse no aprueba a nadie: la persona queda pendiente hasta que la
  * empresa la verifica, y esa verificacion es una transaccion en la red.
  */
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { api } from '../api.js';
-import { ponerPerfil } from '../estado.js';
+import { conSesion, estado, ponerPerfil } from '../estado.js';
 import { RUBROS } from '../../lib/rubros.js';
+import { REGLA_PIN, pinValido, problemaDelPin } from '../../lib/reglas.js';
 import Pin from '../Pin.vue';
 
 const props = defineProps({ token: { type: String, required: true } });
@@ -24,6 +25,19 @@ const pin = ref('');
 const pin2 = ref('');
 const trabajando = ref(false);
 const aviso = ref('');
+const problema = computed(() => problemaDelPin(pin.value, pin2.value));
+const sePuede = computed(() => pinValido(pin.value) && pin.value === pin2.value);
+
+// Registrarse inicia la sesion de la persona nueva. Si en este equipo hay
+// otra cuenta abierta, se avisa y se ofrece salir primero: nunca se cambia de
+// cuenta en silencio.
+const otraCuenta = computed(() => (conSesion()
+  ? estado.yo.nombre ?? estado.yo.empresa?.replace(' (demostración)', '') ?? estado.yo.identificador
+  : ''));
+async function salirYContinuar() {
+  await api.salir().catch(() => {});
+  await ponerPerfil(await api.sesion());
+}
 
 onMounted(async () => {
   try {
@@ -35,12 +49,7 @@ onMounted(async () => {
 
 async function registrar() {
   aviso.value = '';
-  if (pin.value !== pin2.value) {
-    aviso.value = 'Los dos PIN no son iguales. Escríbelos otra vez.';
-    pin.value = '';
-    pin2.value = '';
-    return;
-  }
+  if (!sePuede.value) return;
   trabajando.value = true;
   try {
     const cuerpo = { invitacion: props.token, ...datos.value, pin: pin.value };
@@ -61,6 +70,14 @@ async function registrar() {
   <section class="tarjeta">
     <p v-if="error" class="aviso no" role="alert"><strong>No pudimos abrir la invitación</strong>{{ error }}</p>
     <p v-else-if="!invitacion" class="cargando">Abriendo la invitación…</p>
+
+    <div v-else-if="otraCuenta" class="aviso espera" role="alert">
+      <strong>En este equipo está abierta la cuenta de {{ otraCuenta }}</strong>
+      Para registrarte con esta invitación, primero hay que salir de esa cuenta.
+      <div class="acciones" style="margin-top:10px">
+        <button class="si" @click="salirYContinuar">Salir y continuar</button>
+      </div>
+    </div>
 
     <form v-else @submit.prevent="registrar">
       <h2>{{ invitacion.rol === 'comercio' ? 'Acepta vales en tu tienda' : 'Recibe tu vale de alimentos' }}</h2>
@@ -92,12 +109,13 @@ async function registrar() {
         <input id="rc" v-model="datos.celular" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="987 654 321" required>
         <p class="apagado pequeno" style="margin:4px 0 0">Con este número entrarás. No te enviaremos mensajes.</p>
       </div>
+      <p class="apagado pequeno" style="margin-bottom:6px">Tu PIN: {{ REGLA_PIN }} No se lo digas a nadie.</p>
       <Pin v-model="pin" id="rp" etiqueta="Elige un PIN de 4 números" />
       <Pin v-model="pin2" id="rp2" etiqueta="Escríbelo otra vez" />
-      <p class="apagado pequeno">No uses 1234 ni el mismo número repetido. No se lo digas a nadie.</p>
+      <p v-if="problema" class="aviso espera" role="status">{{ problema }}</p>
 
       <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-      <button class="principal" :disabled="trabajando || pin.length !== 4 || pin2.length !== 4">
+      <button class="principal" :disabled="trabajando || !sePuede">
         {{ trabajando ? 'Creando tu cuenta… tarda unos segundos' : 'Registrarme' }}
       </button>
     </form>
