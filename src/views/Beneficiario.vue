@@ -262,6 +262,7 @@ function escucharResultado() {
           <b>{{ soles(enLaRed.saldo) }}</b>
           <span v-if="!enLaRed.congelado && programa">Úsalo hasta el {{ fecha(programa.vence_el) }}</span>
           <span v-else-if="enLaRed.congelado">Ya no se puede usar</span>
+          <img class="vale-logo" src="/logo.svg" alt="">
         </div>
         <div v-else-if="errorSaldo" class="aviso espera" role="alert">
           <strong>No pudimos ver tu saldo</strong>

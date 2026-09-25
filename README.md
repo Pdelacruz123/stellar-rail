@@ -300,8 +300,9 @@ Licencia MIT (ver `LICENSE`).
 | [`qrcode`](https://github.com/soldair/node-qrcode) | Generar códigos QR | MIT |
 | [`qr-scanner`](https://github.com/nimiq/qr-scanner) | Leer códigos QR con la cámara | MIT |
 | [`vite`](https://github.com/vitejs/vite) y [`@vitejs/plugin-vue`](https://github.com/vitejs/vite-plugin-vue) | Compilación y servidor de desarrollo | MIT |
+| [Inter](https://github.com/rsms/inter) y [Lora](https://github.com/cyrealtype/Lora-Cyrillic), vía Google Fonts | Tipografía de la interfaz | SIL Open Font License 1.1 |
 
-No se usaron plantillas de terceros.
+No se usaron plantillas de terceros. El logo es provisional y está en `public/logo.svg`: para cambiarlo basta con reemplazar ese archivo.
 
 ## Equipo
 
