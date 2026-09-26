@@ -6,7 +6,7 @@
  * negro) y el oro de la marca aparece poco:
  *  - en el logo;
  *  - en la accion principal de cada pantalla (Escanear QR, Mostrar QR para
- *    cobrar, Entrar, Probar la demostracion), siempre con texto negro.
+ *    cobrar, Entrar), siempre con texto negro.
  * Las demas acciones son neutras. Asi la accion principal se encuentra sin
  * buscar.
  *
@@ -427,17 +427,6 @@ button.interruptor[aria-pressed="true"] .estado-interruptor { background: var(--
 
 .hoja .qr { margin: 8px 0; }
 
-/* ---------- Cuentas de prueba ---------- */
-
-.cuentas .cuenta { padding: 14px 0; border-bottom: 1px solid var(--linea); }
-.cuentas .cuenta:last-child { border-bottom: none; }
-.cuenta-cabeza { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.cuenta-cabeza .nombre { font-weight: 700; }
-dl.datos { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 0; }
-dl.datos dt { color: var(--texto-2); font-size: .9em; }
-dl.datos dd { margin: 0; overflow-wrap: anywhere; }
-dl.datos code { font-size: 1.02em; font-weight: 700; letter-spacing: .02em; }
-
 /* ---------- Barra de la aplicacion (trabajador y tienda) ---------- */
 
 .app-barra { background: var(--superficie); border-bottom: 1px solid var(--linea); }
@@ -479,7 +468,6 @@ dl.datos code { font-size: 1.02em; font-weight: 700; letter-spacing: .02em; }
 .acceso-titulo { font-size: 1.6rem; margin-bottom: 14px; }
 .acceso-ayuda { margin-top: 14px; text-align: center; }
 .acceso-otra { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid var(--linea); text-align: center; font-size: .95rem; }
-.prueba-caja h2 { font-size: 1.05rem; }
 
 .entrada-lateral { padding-top: 24px; }
 @media (max-width: 900px) { .entrada-lateral { padding-top: 16px; } }

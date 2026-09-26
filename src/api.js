@@ -35,7 +35,6 @@ export const api = {
   verInvitacion: (token) => sesion('invitacion', { token }),
   verRestablecer: (token) => sesion('verRestablecer', { token }),
   restablecer: (token, pin) => sesion('restablecer', { token, pin }),
-  crearDemo: () => pedir('demo', 'POST'),
 
   beneficiarios: () => pedir('beneficiarios'),
   registrarBeneficiario: (datos) => pedir('beneficiarios', 'POST', datos),

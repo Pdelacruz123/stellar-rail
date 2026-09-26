@@ -7,15 +7,11 @@
  *  - la empresa, con correo y contrasena: maneja el dinero de todos;
  *  - trabajador y tienda, con su celular y un PIN de 4 numeros.
  *
- * Para probarlo sin registrarse: debajo del formulario se crean cuentas de
- * prueba, y "Usar" rellena el formulario con los datos de cada una. Se entra
- * con el mismo boton de siempre.
+ * Trabajadores y tiendas no se registran aqui: la empresa los invita.
  */
 import { nextTick, ref } from 'vue';
 import { api } from '../api.js';
 import { ponerPerfil } from '../estado.js';
-import { crearDemo, leerDemo } from '../demo.js';
-import CuentasDePrueba from '../CuentasDePrueba.vue';
 import Icono from '../Icono.vue';
 import Marca from '../Marca.vue';
 import Pin from '../Pin.vue';
@@ -31,8 +27,6 @@ const empresaNueva = ref({ nombre: '', correo: '', contrasena: '' });
 const trabajando = ref('');
 const aviso = ref('');
 const primerCampo = ref(null);
-const botonEntrar = ref(null);
-const demo = ref(leerDemo());
 
 const PERFILES = [
   { clave: 'trabajador', nombre: 'Trabajador' },
@@ -84,30 +78,6 @@ async function registrarEmpresa() {
   }
 }
 
-async function probarDemo() {
-  trabajando.value = 'demo';
-  aviso.value = '';
-  try {
-    demo.value = await crearDemo();
-  } catch (e) {
-    aviso.value = e.message;
-  } finally {
-    trabajando.value = '';
-  }
-}
-
-/** "Usar" una cuenta de prueba: rellena el formulario; se entra con el boton de siempre. */
-async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
-  modo.value = 'entrar';
-  perfil.value = p;
-  aviso.value = '';
-  await nextTick();
-  identificador.value = id;
-  secreto.value = s;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  await nextTick();
-  botonEntrar.value?.focus();
-}
 </script>
 
 <template>
@@ -140,7 +110,7 @@ async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
             </div>
             <Pin v-model="secreto" id="pin-entrar" etiqueta="PIN de 4 números" />
             <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-            <button ref="botonEntrar" class="principal" :disabled="Boolean(trabajando) || secreto.length !== 4">
+            <button class="principal" :disabled="Boolean(trabajando) || secreto.length !== 4">
               {{ trabajando === 'entrar' ? 'Entrando…' : 'Entrar' }}
             </button>
             <p class="apagado pequeno acceso-ayuda">
@@ -159,7 +129,7 @@ async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
               <input id="clave" v-model="secreto" type="password" autocomplete="current-password" required>
             </div>
             <p v-if="aviso" class="aviso no" role="alert">{{ aviso }}</p>
-            <button ref="botonEntrar" class="principal" :disabled="Boolean(trabajando)">
+            <button class="principal" :disabled="Boolean(trabajando)">
               {{ trabajando === 'entrar' ? 'Entrando…' : 'Entrar' }}
             </button>
           </form>
@@ -195,27 +165,6 @@ async function usarCuenta({ perfil: p, identificador: id, secreto: s }) {
           </p>
         </section>
 
-        <!-- ================= PROBAR SIN REGISTRARSE ================= -->
-        <section class="tarjeta acceso-caja prueba-caja">
-          <template v-if="!demo">
-            <h2>¿Quieres probarlo sin registrarte?</h2>
-            <p class="apagado pequeno">
-              Creamos una empresa de ejemplo con dos trabajadoras y tres tiendas,
-              y te damos sus datos para entrar. Funciona en la red de pruebas: no se usa dinero real.
-            </p>
-            <button class="suave ancho" :disabled="Boolean(trabajando)" @click="probarDemo">
-              {{ trabajando === 'demo' ? 'Creando las cuentas… tarda unos segundos' : 'Probar la demostración' }}
-            </button>
-          </template>
-          <template v-else>
-            <h2>Cuentas de prueba</h2>
-            <p class="apagado pequeno">«Usar» completa el formulario de arriba. Para cambiar de persona, sal y entra con otra.</p>
-            <CuentasDePrueba :demo="demo" @usar="usarCuenta" />
-            <button class="enlace" :disabled="Boolean(trabajando)" @click="probarDemo">
-              {{ trabajando === 'demo' ? 'Creando otra empresa de prueba…' : 'Empezar de cero con otra empresa de prueba' }}
-            </button>
-          </template>
-        </section>
       </main>
 
       <!-- ================= QUE ES (a un lado en computadora) ================= -->
