@@ -5,6 +5,19 @@
 
 **Ayudamos a las empresas a entregar beneficios con reglas verificables, que el trabajador puede gastar en la bodega de su barrio con un QR, sin depender de una red cerrada de tarjetas.**
 
+## Evidencia on-chain (Stellar Testnet)
+
+Sin contrato inteligente: las reglas son funciones nativas del activo `ALIM`. Todo se verifica con el hash en el explorador público.
+
+- **Emisor del vale:** [`GAUSPC2L…T5JO`](https://stellar.expert/explorer/testnet/account/GAUSPC2LMUGK54YV2I73RMIZG7C5DJKEDLQ7GWINUTXRPGXKHOW7T5JO), con `AUTH_REQUIRED`, `AUTH_REVOCABLE` y `AUTH_CLAWBACK_ENABLED`: [transacción](https://stellar.expert/explorer/testnet/tx/cc8720b10dfe15bb7e900bc2dcf7f62871dc4060fc2baa21ac995b5ffa59fed4)
+- **Verificación = autorización en la red:** [`d0130915…`](https://stellar.expert/explorer/testnet/tx/d01309159a6a2ce7aa695980cb0d8424f6291ffbdb34f3ed898a7f1b7ec88145)
+- **Entrega del vale:** [`4b1e9148…`](https://stellar.expert/explorer/testnet/tx/4b1e914892cabe9b05ef2bb6a978fe0ac1a70de023ea97ba3d121a3d5ec61506)
+- **Pago con QR:** [`2b2a5be5…`](https://stellar.expert/explorer/testnet/tx/2b2a5be5dec2506408eca90d34233054f675eba1bc4389811dff8730d4d1248d) · **pago con el código del trabajador:** [`eb38bbfb…`](https://stellar.expert/explorer/testnet/tx/eb38bbfb880827a47ac17d910ec0eeaa424222e627f9f87fe478d76724ea6b1b)
+- **Pago a una tienda no afiliada, rechazado por la red** (`op_not_authorized`): [`37142088…`](https://stellar.expert/explorer/testnet/tx/371420881ec8897d63f8dce1d9d96db72d38540b3e6e42f37933d55e949937d7)
+- **Vencimiento: congelar y anular lo no usado en una transacción:** [`42608bec…`](https://stellar.expert/explorer/testnet/tx/42608bec3954d7656babd434528033c4d00889fbd5ef5ae038ccaac4dd594e23)
+
+Son 30 evidencias en total: a mano en Stellar Lab (1 a 8, abajo) y generadas por la aplicación en producción (9 a 30). El detalle de cada una está en [`EVIDENCIAS.md`](./EVIDENCIAS.md).
+
 ---
 
 ## El usuario
@@ -133,11 +146,11 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **Aviso en vivo** a la bodega cuando le pagan, en pantalla y en voz alta ("Recibiste 18 soles con 50 céntimos").
 - **Entregas a quien la empresa elija**: un bono puede ser solo para algunos trabajadores. La prestación alimentaria se recarga una vez por mes. Dos clics en "Entregar" no emiten dos veces el vale.
 - **Rubros por programa**: cada tienda tiene un rubro fijo desde que la afilian, que viaja en el memo de cada transacción. Que el programa lo cubra lo comprueba la aplicación.
-- **Evidencias 9 a 18**: el ciclo completo ejecutado por la aplicación desplegada.
+- **Evidencias 9 a 30**: el ciclo completo ejecutado por la aplicación desplegada; de la 19 a la 30, con la versión final (pago por QR y por código, baja y vencimiento).
 
 ## Estado actual
 
-El ciclo completo del vale está **ejecutado y verificable en Stellar Testnet** de tres formas: a mano en Stellar Lab (evidencias 1 a 8), con un script que cualquiera puede correr, y desde la aplicación desplegada (evidencias 9 a 18).
+El ciclo completo del vale está **ejecutado y verificable en Stellar Testnet** de tres formas: a mano en Stellar Lab (evidencias 1 a 8), con un script que cualquiera puede correr, y desde la aplicación desplegada (evidencias 9 a 30).
 
 ## Actores
 

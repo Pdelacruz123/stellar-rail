@@ -283,6 +283,33 @@ Fecha: 2026-09-22. Un solo recorrido, ledgers 4819984 a 4819993, consecutivos.
 
 ---
 
+## Evidencias 19 a 30: la versión final, con pago por QR y por código
+
+Generadas por **la aplicación en producción** el 2026-09-25, recorriendo la demostración como lo haría cualquier visitante: la empresa aprueba y entrega, las trabajadoras pagan con QR y con su código de pago, una tienda sin afiliar intenta cobrar, la empresa da de baja a Rosa y vence el programa. Ledgers 4874075 a 4874093.
+
+| # | Qué hizo la aplicación | Operación | Resultado | Ledger | Transacción |
+|---|---|---|---|---|---|
+| 19 | Alta de la demostración: 2 trabajadoras y 3 tiendas en **una** transacción, con las reservas a cargo del emisor | `Begin Sponsoring` + `Create Account` + `Change Trust` + `End Sponsoring`, ×5 | exitosa | 4874075 | [`2da94041…`](https://stellar.expert/explorer/testnet/tx/2da94041cdc3388b19b073d404593e8eb5140fb5958bc2534aec66b583873de1) |
+| 20 | La empresa aprueba a María: esta transacción *es* la verificación | `Set Trust Line Flags` | exitosa | 4874076 | [`d0130915…`](https://stellar.expert/explorer/testnet/tx/d01309159a6a2ce7aa695980cb0d8424f6291ffbdb34f3ed898a7f1b7ec88145) |
+| 21 | Aprueba a Rosa | `Set Trust Line Flags` | exitosa | 4874077 | [`a0b8b762…`](https://stellar.expert/explorer/testnet/tx/a0b8b7627185e6bfc2871d83a5248a7950f3bda04a3474b8a67f5e4ee8763fdc) |
+| 22 | Afilia la Bodega Don Julio | `Set Trust Line Flags` | exitosa | 4874078 | [`c802dcce…`](https://stellar.expert/explorer/testnet/tx/c802dcce73029e59fa5fc0ac885ac21f2842b68f980325ed8bdf823b43f23990) |
+| 23 | Afilia Electro Hogar (rubro electrodomésticos). La Esquina queda **sin** afiliar | `Set Trust Line Flags` | exitosa | 4874079 | [`a0ccf89c…`](https://stellar.expert/explorer/testnet/tx/a0ccf89c1a33ecf5928efef6153bf70d4e0cfea88a2bc4351607d05ef208b407) |
+| 24 | Recarga del mes de la prestación alimentaria: 150 `ALIM` a cada una, en una transacción | `Payment` ×2 | exitosa | 4874080 | [`4b1e9148…`](https://stellar.expert/explorer/testnet/tx/4b1e914892cabe9b05ef2bb6a978fe0ac1a70de023ea97ba3d121a3d5ec61506) |
+| 25 | **Pago con QR**: María escanea el cobro de Don Julio y confirma (18,50 `ALIM`, memo `rubro:alimentos`) | `Payment` | exitosa | 4874083 | [`2b2a5be5…`](https://stellar.expert/explorer/testnet/tx/2b2a5be5dec2506408eca90d34233054f675eba1bc4389811dff8730d4d1248d) |
+| 26 | **Pago con el código de María**: Don Julio cobra 12 `ALIM` con el código que ella le dicta | `Payment` | exitosa | 4874084 | [`eb38bbfb…`](https://stellar.expert/explorer/testnet/tx/eb38bbfb880827a47ac17d910ec0eeaa424222e627f9f87fe478d76724ea6b1b) |
+| 27 | **Rechazo de la red**: La Esquina, sin afiliar, intenta cobrar con el código de María | `Payment` | `op_not_authorized` | 4874086 | [`37142088…`](https://stellar.expert/explorer/testnet/tx/371420881ec8897d63f8dce1d9d96db72d38540b3e6e42f37933d55e949937d7) |
+| 28 | Pago con QR de más de S/ 50: María confirma con su PIN (60 `ALIM`) | `Payment` | exitosa | 4874088 | [`cc6ffda2…`](https://stellar.expert/explorer/testnet/tx/cc6ffda24ee93c7e9173fa91259ef23e355b820e350d93223ce79a1af6ac344b) |
+| 29 | Pago con el código de Rosa (30 `ALIM`). Después la empresa la da de baja: conserva sus 120 | `Payment` | exitosa | 4874090 | [`dd8f672e…`](https://stellar.expert/explorer/testnet/tx/dd8f672e7b56be778d0c7e609d1d58c0e3284529c38f33144ed83832724e1695) |
+| 30 | **Vencimiento**: congela las dos cuentas y anula lo que quedó sin usar, 59,50 de María y 120 de Rosa, en una sola transacción | `Set Trust Line Flags` ×2 + `Clawback` ×2 | exitosa | 4874093 | [`42608bec…`](https://stellar.expert/explorer/testnet/tx/42608bec3954d7656babd434528033c4d00889fbd5ef5ae038ccaac4dd594e23) |
+
+**QR y código terminan en la misma operación.** La 25 (QR) y la 26 (código) son un `Payment` de la trabajadora a la tienda, con el rubro de la tienda en el memo. Cambia solo cómo se autoriza: confirmando el cobro escaneado, o dictando un código de un solo uso generado con su PIN.
+
+**La 26 y la 27 usan un código de la misma trabajadora.** Una va a una tienda afiliada y se ejecuta; la otra va a una tienda sin afiliar y la rechaza el protocolo. El rechazo está en el ledger con `successful: false`.
+
+**La baja no anula.** Rosa se dio de baja después de la 29 y conservó sus 120 `ALIM`: se anularon recién en la 30, con el vencimiento, junto con el saldo de María. En total quedaron S/ 179,50 sin usar, y el panel de la empresa lo muestra.
+
+---
+
 ## Reglas para este archivo
 
 - Nunca escribir claves secretas (`S...`) aquí ni en ningún archivo del repositorio.
