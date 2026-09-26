@@ -67,6 +67,13 @@ async function cargarSaldo() {
 const tieneVale = computed(() => yo.value?.estado === 'verificado'
   || (yo.value?.estado === 'baja' && Number(enLaRed.value?.saldo ?? 0) > 0));
 
+// Que tarjeta del vale mostrar. Quien se dio de baja la ve mientras se lee
+// su saldo ("Viendo tu saldo…") y despues solo si le queda algo.
+const mostrarVale = computed(() => {
+  if (yo.value?.estado === 'baja') return enLaRed.value === null || tieneVale.value;
+  return tieneVale.value;
+});
+
 const recibioElVale = computed(() => (programa.value?.recibieron ?? []).includes(yo.value?.id));
 watch([() => yo.value?.id, () => yo.value?.estado, recibioElVale], cargarSaldo, { immediate: true });
 
@@ -327,7 +334,7 @@ function escucharResultado() {
         </div>
 
         <!-- El vale, como una tarjeta de verdad -->
-        <template v-if="!tieneVale || sinValeAun" />
+        <template v-if="!mostrarVale || sinValeAun" />
         <div v-else-if="enLaRed" :class="['vale', { congelado: enLaRed.congelado }]">
           <div class="vale-arriba">
             <span class="vale-programa">{{ enLaRed.congelado ? 'Tu vale venció' : (programa?.nombre ?? 'Tu vale') }}</span>
