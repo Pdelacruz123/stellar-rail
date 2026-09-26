@@ -134,7 +134,7 @@ Los dos primeros están reproducidos y verificados en testnet. Un rechazo a nive
 Ninguna tabla guarda saldos ni claves de cuentas. Además de las de abajo hay tablas auxiliares: `entregas` (una por trabajador y por mes en la prestación alimentaria, una sola en un bono) y `cobros_usados`, para no emitir ni cobrar dos veces; `codigos_pago`, el código de pago de cada trabajador, que vale 5 minutos y sirve una vez; y `candados`, el turno del emisor.
 
 ```sql
--- El espacio de una empresa. Cada demostracion es un espacio propio, para
+-- El espacio de una empresa. Cada empresa es un espacio propio, para
 -- que dos visitantes no se pisen el recorrido.
 CREATE TABLE sesiones (
   id          TEXT PRIMARY KEY,
@@ -214,13 +214,12 @@ CREATE TABLE eventos (
 
 ## 6. API
 
-Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la petición:
+Seis funciones serverless, una por recurso. Las acciones viajan en el cuerpo de la petición:
 
 | Petición | Qué hace | Quién |
 |---|---|---|
 | `GET /api/sesion` | Quién soy, o nadie | Todos |
 | `POST /api/sesion` | `entrar` (celular + PIN o correo + contraseña), `salir`, `cerrarTodas`, `registrarEmpresa`, ver una invitación, `restablecer` el PIN | Según el caso |
-| `POST /api/demo` | Crea la demostración: empresa, dos trabajadores y tres tiendas, con sus accesos | Cualquiera, hasta 30 por hora |
 | `GET /api/beneficiarios` | La empresa ve a todos, con su celular; un trabajador, solo a sí mismo | Empresa, trabajador |
 | `POST /api/beneficiarios` | Registrarse con una invitación (nombre, celular y PIN): crea su cuenta y su trustline, en `pendiente` | Invitados, empresa |
 | `POST /api/beneficiarios` `{accion}` | `verificar` (al aprobar **ejecuta `autorizar` en la red**), `baja`, `restablecer` | Empresa |
@@ -231,7 +230,7 @@ Siete funciones serverless, una por recurso. Las acciones viajan en el cuerpo de
 | `POST /api/pagos` | Con QR: el trabajador abre el cobro (`{accion:'ver', cobro}`: tienda, monto, si su vale la cubre, si pide PIN) y lo paga (`{cobro, pin?}`), con PIN por encima de S/ 50. Con código: el trabajador lo genera con su PIN (`{accion:'miCodigo', pin}`) y su celular sigue el cobro (`{accion:'estadoCodigo'}`); la tienda cobra con `{codigo, monto}` | Trabajador, tienda |
 | `GET /api/eventos` | Historial con hash y enlace al explorador | Empresa |
 
-**Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción se pasaría del límite, además de tener muchos paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 7.
+**Por qué las acciones no van en la ruta.** Sin framework, Vercel convierte cada archivo de `api/` en una función, y el plan gratuito admite **12 por despliegue**. Con una ruta REST por acción se pasaría del límite, además de tener muchos paquetes distintos con el SDK de Stellar dentro. Agrupadas por recurso son 6.
 
 **`POST /api/pagos` no comprueba si el comercio está afiliado.** Envía el pago y traduce lo que responda la red. Comprobarlo antes convertiría una regla del protocolo en una regla nuestra. Un pago no hecho responde `200` y no un error, y el campo `controlDe` dice quién lo frenó: `red`, con su hash y su código, o `aplicacion`, si el programa no cubre ese rubro, sin transacción. Las dos cosas no se confunden.
 
@@ -304,9 +303,9 @@ Al entrar se recibe una **credencial firmada con `MASTER_SEED`** que lleva el us
 
 La empresa invita con dos enlaces firmados, uno para trabajadores y otro para tiendas. Invitar no aprueba a nadie: el control sigue siendo la verificación, que se ejecuta en la red.
 
-### La demostración
+### La entrada
 
-La entrada al sitio es el inicio de sesión, como en cualquier página con cuentas. Debajo, **Probar la demostración** crea un espacio nuevo con cinco personas, cuyas cuentas nacen en una sola transacción patrocinada, y muestra el correo, el celular y el PIN de cada una; «Usar» completa el formulario. Se entra con una, se sale y se entra con otra. Nada queda escondido en un archivo, y ningún visitante estropea la demostración de otro.
+La entrada al sitio es el inicio de sesión, como en cualquier página con cuentas: la empresa entra o crea su cuenta, y trabajadores y tiendas entran con su celular y su PIN. Nadie se registra solo: la empresa invita. Cada empresa es un espacio propio, así que ninguna estropea el recorrido de otra.
 
 Cada pantalla es responsiva: en computadora, la tienda y el trabajador ven dos columnas; en celular, una.
 
@@ -406,8 +405,8 @@ Cada entrega se **reserva por trabajador antes de emitir**. Dos clics seguidos e
 - `lib/riel/`: las operaciones completas, con el hash calculado antes de enviar, reintento ante choque de secuencia, resolución de 504 y traducción de 15 códigos de la red.
 - `scripts/ciclo.js`: reproduce el ciclo entero con cuentas nuevas, 11 transacciones, y comprueba 12 afirmaciones contra Horizon. **No necesita configuración**: crea su propio emisor con Friendbot.
 - `lib/cuentas.js` y `lib/db.js`: derivación de cuentas y esquema, probados contra la base real.
-- `api/`: las siete funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con QR y con código de pago, baja que conserva el saldo y vencimiento que informa lo no usado.
-- `src/`: portada, demostración y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, desde cero y con la demostración: aprobación, entrega a los elegidos, cobro con QR y con el código del trabajador, aviso en su celular, rechazo de la red, control de rubros, PIN sobre S/ 50, código repetido, baja que conserva el saldo, PIN nuevo y vencimiento.
+- `api/`: las seis funciones, probadas de punta a punta contra la base y la red: login, bloqueo, cierre de sesión en todos los dispositivos, PIN nuevo de un solo uso, pagos con QR y con código de pago, baja que conserva el saldo y vencimiento que informa lo no usado.
+- `src/`: portada y las tres vistas, responsivas, probadas en un navegador real en computadora y en celular, con empresas creadas desde cero: aprobación, entrega a los elegidos, cobro con QR y con el código del trabajador, aviso en su celular, rechazo de la red, control de rubros, PIN sobre S/ 50, código repetido, baja que conserva el saldo, PIN nuevo y vencimiento.
 - La aplicación desplegada recorrió el ciclo completo en producción: evidencias 9 a 18 de [EVIDENCIAS.md](../EVIDENCIAS.md).
 - Nueve transacciones más del ciclo ejecutado a mano, evidencias 1 a 8.
 

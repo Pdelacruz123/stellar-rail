@@ -136,7 +136,6 @@ Proyecto nuevo, iniciado el 19 de septiembre de 2026. No parte de código previo
 - **Script del ciclo completo** (`npm run ciclo`): reproduce las evidencias con cuentas nuevas y comprueba el estado final contra Horizon.
 - **API** en funciones serverless de Vercel, con base de datos en Neon que nunca guarda saldos ni claves.
 - **Aplicación web** con tres perfiles: empresa, trabajador y comercio.
-- **Demostración en un clic**: crea una empresa de prueba con dos trabajadores y tres tiendas, en una sola transacción, y muestra el celular y el PIN de cada uno.
 - **Diseño responsivo**: cada pantalla tiene su versión de computadora y de celular.
 - **Acceso según el riesgo**: la empresa entra con correo y contraseña; trabajador y tienda, con su celular y un PIN de 4 números. PIN cifrado con scrypt, bloqueo de 15 minutos tras 5 intentos fallidos y cierre de sesión en todos los dispositivos. La empresa invita por enlace o QR.
 - **Registro en persona**: la empresa puede registrar a un trabajador en Recursos Humanos; la persona escribe su PIN en ese equipo.
@@ -200,27 +199,17 @@ BODEGA_A debe mostrar `3.0000000` de `ALIM`, y BODEGA_B `0.0000000` con `is_auth
 
 ### En línea, sin instalar nada
 
-Abre <https://stellar-rail.vercel.app>: como cualquier página con cuentas, empieza pidiendo entrar o crear la cuenta de la empresa. Debajo del formulario, toca **Probar la demostración**: se crea una empresa de prueba solo para ti, con cinco cuentas, y aparecen el correo, el celular y el PIN de cada una. **Usar** completa el formulario y entras con **Entrar**. No hace falta celular ni ninguna credencial guardada en otro lado.
+Abre <https://stellar-rail.vercel.app>. Como cualquier página con cuentas, empieza pidiendo entrar o crear la cuenta de la empresa. Para ver a cada persona con su propia sesión, usa **dos ventanas**: una normal para la empresa y las tiendas, y una privada (o un celular) para la trabajadora.
 
-Para cambiar de persona, sales y entras con otra.
-
-| Persona | Qué representa |
-|---|---|
-| María | Trabajadora: paga escaneando el QR de la tienda o dictando su código |
-| Rosa | Trabajadora: se da de baja y conserva su saldo |
-| Bodega Don Julio | Tienda para afiliar |
-| Minimarket La Esquina | Tienda que **no** se afilia: la red rechaza sus pagos |
-| Electro Hogar | Tienda de electrodomésticos: el vale de alimentos no la cubre |
-
-1. **Empresa:** aprueba a María, a Rosa, a Don Julio y a Electro Hogar; deja a La Esquina sin aprobar. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa, elige a quién entregar y entrega la recarga del mes.
-2. **María** entra: ve su vale, cómo pagar y dónde usarlo.
-3. **Don Julio** escribe el monto y toca **Mostrar QR**. María, en su celular, lo escanea y confirma. Don Julio ve «Te pagaron» al instante.
-4. **María** toca **Mostrar mi código** y marca su PIN. **Don Julio** toca **Cobrar con su código**, escribe el monto y el código, y cobra. En una sola ventana: anota el código de María, sal y entra como Don Julio; vale 5 minutos.
-5. **La Esquina** cobra con el código de María: **lo rechaza la red** (`op_not_authorized`), con su comprobante. El celular de María lo muestra.
-6. **Electro Hogar** cobra: el programa de alimentos no cubre electrodomésticos. Esta regla la aplica la aplicación, no la red.
-7. **Empresa:** da de baja a Rosa, que conserva su saldo; mira el gasto y el historial, y vence el programa: lo no usado se anula y la empresa ve cuánto era.
-
-Con dos dispositivos se ve también el aviso en vivo: la tienda recibe «Te pagaron» sin recargar, y el celular de la trabajadora ve el cobro con su código. Una empresa de verdad se registra con **Crear cuenta de empresa** e invita a sus trabajadores y tiendas por enlace o QR.
+1. **Empresa:** toca **Crear cuenta de empresa** (el correo no se verifica) y entra a su panel.
+2. **Invitar:** copia el enlace para trabajadores y ábrelo en la ventana privada. Regístrate con tu nombre, un celular de 9 dígitos que empiece por 9 y un PIN. Haz lo mismo con el enlace para bodegas, tres veces: una bodega de alimentos que aprobarás, otra que **no** aprobarás y una de electrodomésticos. Para cambiar de cuenta, sal y entra con la otra.
+3. **Empresa:** aprueba a la trabajadora, a la primera bodega y a la de electrodomésticos. Cada aprobación es una transacción en la red, con su comprobante. Luego crea el programa, elige a quién entregar y entrega la recarga del mes.
+4. **Trabajadora:** entra y ve su vale, cómo pagar y dónde usarlo.
+5. **Bodega aprobada:** escribe el monto y toca **Mostrar QR**. La trabajadora lo escanea con el celular y confirma, y la bodega ve «Te pagaron» al instante.
+6. **Con código:** la trabajadora toca **Mostrar mi código** y marca su PIN. La bodega toca **Cobrar con su código**, escribe el monto y el código, y cobra. El código vale 5 minutos.
+7. **Bodega no aprobada:** cobra con un código de la trabajadora y **la red lo rechaza** (`op_not_authorized`), con su comprobante.
+8. **Electrodomésticos:** el programa de alimentos no la cubre. Esta regla la aplica la aplicación, no la red.
+9. **Empresa:** mira el gasto y el historial, y vence el programa. Lo que no se usó se anula, y el panel muestra cuánto era.
 
 ### El ciclo completo desde la terminal
 
@@ -271,7 +260,7 @@ En [Stellar Lab](https://lab.stellar.org), red Testnet:
 - **Un programa vigente por empresa a la vez.** Todos los vales son el mismo activo, `ALIM`, así que los saldos de dos programas se mezclarían en la misma cuenta. Separarlos exige un activo por programa.
 - **Verificación simulada.** No se procesan datos reales de identidad.
 - **El PIN protege el acceso, no la cuenta en la red.** Las cuentas las custodia el sistema (decisión del MVP); nadie ve su clave. Sin SMS ni correos de verificación: en sus versiones gratuitas solo llegan al desarrollador, así que el PIN nuevo se entrega con un enlace de un solo uso que la empresa comparte por WhatsApp o con un QR.
-- **Las demostraciones son públicas.** Cualquiera puede crear una; hay un tope de 30 por hora porque cada una gasta XLM de prueba del emisor.
+- **El registro es abierto.** Cualquiera puede crear una empresa en la red de pruebas; cada alta gasta XLM de prueba del emisor en reservas.
 - **Sin cuenta distribuidora.** El emisor paga directo; en producción conviene separar ambos roles.
 - **Un beneficiario autorizado podría transferir vales a otro tenedor autorizado.** Cerrarlo requiere Soroban o un esquema donde solo los comercios reciban.
 - **Reservas de cuentas.** Cada trustline exige una reserva en XLM; a escala se resuelve con reservas patrocinadas.
